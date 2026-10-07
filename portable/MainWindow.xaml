@@ -1,0 +1,609 @@
+<Window
+    x:Class="QuickCal.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="clr-namespace:QuickCal.Controls"
+    Title="QuickCal"
+    Icon="pack://application:,,,/Assets/QuickCal.ico"
+    Background="White"
+    FontFamily="Segoe UI"
+    FontSize="14"
+    SizeToContent="WidthAndHeight"
+    MinWidth="300" MinHeight="130"
+    WindowStartupLocation="CenterScreen"
+    UseLayoutRounding="True"
+    PreviewKeyDown="Window_PreviewKeyDown"
+    StateChanged="Window_StateChanged"
+    Closing="Window_Closing"
+    ContentRendered="Window_ContentRendered">
+    <Window.Resources>
+        <Style x:Key="CustomButtonStyle" TargetType="Button">
+            <Setter Property="Foreground" Value="Black"/>
+            <Setter Property="Background" Value="#33080808"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="8,4"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="RootBorder" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                              VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="RootBorder" Property="Background" Value="#4D080808"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="RootBorder" Property="Background" Value="#66080808"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.5"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <!-- The Viewbox scales the whole app when the window is resized.
+         Width/Height 600x220 give the window the same start size as the UWP app; they are released after the first layout. -->
+    <Viewbox x:Name="rootViewbox" Stretch="Uniform" Width="600" Height="220">
+        <Grid x:Name="tabContainer" Width="600" Height="220" Background="White">
+
+            <!-- ===================== TAB 1: CALENDAR ===================== -->
+            <Grid x:Name="tab1Content">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="3*"/>
+                    <RowDefinition Height="20"/>
+                </Grid.RowDefinitions>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="8"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="8"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- Month 1 header -->
+                <Grid Grid.Row="0" Grid.Column="0" x:Name="headGrid1">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+                    <Border Grid.Row="0" Grid.ColumnSpan="8" Background="#143275"/>
+                    <Grid Grid.Row="0" Grid.Column="2" Grid.ColumnSpan="3">
+                        <Viewbox Stretch="Uniform">
+                            <TextBlock Text="September" x:Name="month1" Foreground="White" HorizontalAlignment="Center"/>
+                        </Viewbox>
+                    </Grid>
+                    <Grid Grid.Row="0" Grid.Column="5" Grid.ColumnSpan="2">
+                        <Viewbox Stretch="Uniform">
+                            <TextBlock Text="2023" x:Name="year1" Padding="1" Foreground="White" HorizontalAlignment="Center"/>
+                        </Viewbox>
+                    </Grid>
+                    <Border Grid.Row="1" Grid.Column="0" BorderBrush="Black" BorderThickness="2" Padding="0.8">
+                        <Viewbox Stretch="Uniform">
+                            <TextBlock Text="Week" x:Name="day10" HorizontalAlignment="Center" Foreground="Black"/>
+                        </Viewbox>
+                    </Border>
+                    <Border Grid.Row="1" Grid.Column="1" BorderBrush="Black" BorderThickness="2" Padding="0.5">
+                        <Viewbox Stretch="Uniform">
+                            <TextBlock Text="Mo" x:Name="day11" HorizontalAlignment="Center" Foreground="Black"/>
+                        </Viewbox>
+                    </Border>
+                    <Border Grid.Row="1" Grid.Column="2" BorderBrush="Black" BorderThickness="2" Padding="0.5">
+                        <Viewbox Stretch="Uniform">
+                            <TextBlock Text="Tu" x:Name="day12" HorizontalAlignment="Center" Foreground="Black"/>
+                        </Viewbox>
+                    </Border>
+                    <Border Grid.Row="1" Grid.Column="3" BorderBrush="Black" BorderThickness="2" Padding="0.5">
+                        <Viewbox Stretch="Uniform">
+                            <TextBlock Text="We" x:Name="day13" HorizontalAlignment="Center" Foreground="Black"/>
+                        </Viewbox>
+                    </Border>
+                    <Border Grid.Row="1" Grid.Column="4" BorderBrush="Black" BorderThickness="2" Padding="0.5">
+                        <Viewbox Stretch="Uniform">
+                            <TextBlock Text="Th" x:Name="day14" HorizontalAlignment="Center" Foreground="Black"/>
+                        </Viewbox>
+                    </Border>
+                    <Border Grid.Row="1" Grid.Column="5" BorderBrush="Black" BorderThickness="2" Padding="0.5">
+                        <Viewbox Stretch="Uniform">
+                            <TextBlock Text="Fr" x:Name="day15" HorizontalAlignment="Center" Foreground="Black"/>
+                        </Viewbox>
+                    </Border>
+                    <Border Grid.Row="1" Grid.Column="6" BorderBrush="Black" BorderThickness="2" Padding="0.5">
+                        <Viewbox Stretch="Uniform">
+                            <TextBlock Text="Sa" x:Name="day16" HorizontalAlignment="Center" Foreground="Black"/>
+                        </Viewbox>
+                    </Border>
+                    <Border Grid.Row="1" Grid.Column="7" BorderBrush="Black" BorderThickness="2" Padding="0.5">
+                        <Viewbox Stretch="Uniform">
+                            <TextBlock Text="Su" x:Name="day17" HorizontalAlignment="Center" Foreground="Black"/>
+                        </Viewbox>
+                    </Border>
+                </Grid>
+
+                <Grid Grid.Row="1" Grid.Column="0" x:Name="calGrid1">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                </Grid>
+
+                <!-- Month 2 header (the middle month has navigation and month/year pickers) -->
+                <Grid Grid.Row="0" Grid.Column="2" x:Name="headGrid2">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+                    <Border Grid.Row="0" Grid.ColumnSpan="8" Background="#143275"/>
+                    <Grid Grid.Row="0" Grid.Column="0">
+                        <Border x:Name="backButtonBorder" Padding="1" BorderBrush="LightGray" BorderThickness="3" Background="Transparent" Cursor="Hand"
+                                MouseLeftButtonDown="BackButton_Click" MouseEnter="Button_MouseEnter" MouseLeave="Button_MouseLeave">
+                            <Viewbox Stretch="Uniform">
+                                <TextBlock x:Name="backButton" FontFamily="Segoe MDL2 Assets" Text="&#xE112;" FontWeight="Bold" Foreground="White"/>
+                            </Viewbox>
+                        </Border>
+                    </Grid>
+                    <Grid Grid.Row="0" Grid.Column="7">
+                        <Border x:Name="forwardButtonBorder" Padding="1" BorderBrush="Transparent" Background="Transparent" Cursor="Hand"
+                                MouseLeftButtonDown="ForwardButton_Click" MouseEnter="Button_MouseEnter" MouseLeave="Button_MouseLeave">
+                            <Viewbox Stretch="Uniform">
+                                <TextBlock x:Name="forwardButton" FontFamily="Segoe MDL2 Assets" Text="&#xE111;" FontWeight="Bold" Foreground="White"/>
+                            </Viewbox>
+                        </Border>
+                    </Grid>
+                    <Grid Grid.Row="0" Grid.Column="2" Grid.ColumnSpan="3">
+                        <Viewbox Stretch="Uniform">
+                            <Border x:Name="month2Border" Padding="1" BorderBrush="Transparent" BorderThickness="0" Background="Transparent" Cursor="Hand"
+                                    MouseEnter="Element_MouseEnter" MouseLeave="Element_MouseLeave" MouseLeftButtonUp="Month2_Click">
+                                <TextBlock Text="September" x:Name="month2" Foreground="White" HorizontalAlignment="Center"/>
+                            </Border>
+                        </Viewbox>
+                    </Grid>
+                    <Grid Grid.Row="0" Grid.Column="5" Grid.ColumnSpan="2">
+                        <Viewbox Stretch="Uniform">
+                            <Border x:Name="year2Border" Padding="1" BorderBrush="Transparent" BorderThickness="0" Background="Transparent" Cursor="Hand"
+                                    MouseEnter="Element_MouseEnter" MouseLeave="Element_MouseLeave" MouseLeftButtonUp="Year2_Click">
+                                <TextBlock Text="2023" x:Name="year2" Padding="1" Foreground="White" HorizontalAlignment="Center"/>
+                            </Border>
+                        </Viewbox>
+                    </Grid>
+                    <Border Grid.Row="1" Grid.Column="0" BorderBrush="Black" BorderThickness="2" Padding="0.8">
+                        <Viewbox Stretch="Uniform">
+                            <TextBlock Text="Week" x:Name="day20" HorizontalAlignment="Center" Foreground="Black"/>
+                        </Viewbox>
+                    </Border>
+                    <Border Grid.Row="1" Grid.Column="1" BorderBrush="Black" BorderThickness="2" Padding="0.5">
+                        <Viewbox Stretch="Uniform">
+                            <TextBlock Text="Mo" x:Name="day21" HorizontalAlignment="Center" Foreground="Black"/>
+                        </Viewbox>
+                    </Border>
+                    <Border Grid.Row="1" Grid.Column="2" BorderBrush="Black" BorderThickness="2" Padding="0.5">
+                        <Viewbox Stretch="Uniform">
+                            <TextBlock Text="Tu" x:Name="day22" HorizontalAlignment="Center" Foreground="Black"/>
+                        </Viewbox>
+                    </Border>
+                    <Border Grid.Row="1" Grid.Column="3" BorderBrush="Black" BorderThickness="2" Padding="0.5">
+                        <Viewbox Stretch="Uniform">
+                            <TextBlock Text="We" x:Name="day23" HorizontalAlignment="Center" Foreground="Black"/>
+                        </Viewbox>
+                    </Border>
+                    <Border Grid.Row="1" Grid.Column="4" BorderBrush="Black" BorderThickness="2" Padding="0.5">
+                        <Viewbox Stretch="Uniform">
+                            <TextBlock Text="Th" x:Name="day24" HorizontalAlignment="Center" Foreground="Black"/>
+                        </Viewbox>
+                    </Border>
+                    <Border Grid.Row="1" Grid.Column="5" BorderBrush="Black" BorderThickness="2" Padding="0.5">
+                        <Viewbox Stretch="Uniform">
+                            <TextBlock Text="Fr" x:Name="day25" HorizontalAlignment="Center" Foreground="Black"/>
+                        </Viewbox>
+                    </Border>
+                    <Border Grid.Row="1" Grid.Column="6" BorderBrush="Black" BorderThickness="2" Padding="0.5">
+                        <Viewbox Stretch="Uniform">
+                            <TextBlock Text="Sa" x:Name="day26" HorizontalAlignment="Center" Foreground="Black"/>
+                        </Viewbox>
+                    </Border>
+                    <Border Grid.Row="1" Grid.Column="7" BorderBrush="Black" BorderThickness="2" Padding="0.5">
+                        <Viewbox Stretch="Uniform">
+                            <TextBlock Text="Su" x:Name="day27" HorizontalAlignment="Center" Foreground="Black"/>
+                        </Viewbox>
+                    </Border>
+                </Grid>
+
+                <Grid Grid.Row="1" Grid.Column="2" x:Name="calGrid2">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                </Grid>
+
+                <!-- Month 3 header -->
+                <Grid Grid.Row="0" Grid.Column="4" x:Name="headGrid3">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+                    <Border Grid.Row="0" Grid.ColumnSpan="8" Background="#143275"/>
+                    <Grid Grid.Row="0" Grid.Column="2" Grid.ColumnSpan="3">
+                        <Viewbox Stretch="Uniform">
+                            <TextBlock Text="September" x:Name="month3" Foreground="White" HorizontalAlignment="Center"/>
+                        </Viewbox>
+                    </Grid>
+                    <Grid Grid.Row="0" Grid.Column="5" Grid.ColumnSpan="2">
+                        <Viewbox Stretch="Uniform">
+                            <TextBlock Text="2023" x:Name="year3" Padding="1" Foreground="White" HorizontalAlignment="Center"/>
+                        </Viewbox>
+                    </Grid>
+                    <Border Grid.Row="1" Grid.Column="0" BorderBrush="Black" BorderThickness="2" Padding="0.8">
+                        <Viewbox Stretch="Uniform">
+                            <TextBlock Text="Week" x:Name="day30" HorizontalAlignment="Center" Foreground="Black"/>
+                        </Viewbox>
+                    </Border>
+                    <Border Grid.Row="1" Grid.Column="1" BorderBrush="Black" BorderThickness="2" Padding="0.5">
+                        <Viewbox Stretch="Uniform">
+                            <TextBlock Text="Mo" x:Name="day31" HorizontalAlignment="Center" Foreground="Black"/>
+                        </Viewbox>
+                    </Border>
+                    <Border Grid.Row="1" Grid.Column="2" BorderBrush="Black" BorderThickness="2" Padding="0.5">
+                        <Viewbox Stretch="Uniform">
+                            <TextBlock Text="Tu" x:Name="day32" HorizontalAlignment="Center" Foreground="Black"/>
+                        </Viewbox>
+                    </Border>
+                    <Border Grid.Row="1" Grid.Column="3" BorderBrush="Black" BorderThickness="2" Padding="0.5">
+                        <Viewbox Stretch="Uniform">
+                            <TextBlock Text="We" x:Name="day33" HorizontalAlignment="Center" Foreground="Black"/>
+                        </Viewbox>
+                    </Border>
+                    <Border Grid.Row="1" Grid.Column="4" BorderBrush="Black" BorderThickness="2" Padding="0.5">
+                        <Viewbox Stretch="Uniform">
+                            <TextBlock Text="Th" x:Name="day34" HorizontalAlignment="Center" Foreground="Black"/>
+                        </Viewbox>
+                    </Border>
+                    <Border Grid.Row="1" Grid.Column="5" BorderBrush="Black" BorderThickness="2" Padding="0.5">
+                        <Viewbox Stretch="Uniform">
+                            <TextBlock Text="Fr" x:Name="day35" HorizontalAlignment="Center" Foreground="Black"/>
+                        </Viewbox>
+                    </Border>
+                    <Border Grid.Row="1" Grid.Column="6" BorderBrush="Black" BorderThickness="2" Padding="0.5">
+                        <Viewbox Stretch="Uniform">
+                            <TextBlock Text="Sa" x:Name="day36" HorizontalAlignment="Center" Foreground="Black"/>
+                        </Viewbox>
+                    </Border>
+                    <Border Grid.Row="1" Grid.Column="7" BorderBrush="Black" BorderThickness="2" Padding="0.5">
+                        <Viewbox Stretch="Uniform">
+                            <TextBlock Text="Su" x:Name="day37" HorizontalAlignment="Center" Foreground="Black"/>
+                        </Viewbox>
+                    </Border>
+                </Grid>
+
+                <Grid Grid.Row="1" Grid.Column="4" x:Name="calGrid3">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                </Grid>
+                <!-- Bottom row -->
+                <Grid Grid.Row="2" Grid.Column="2">
+                    <Viewbox Stretch="Uniform" HorizontalAlignment="Left">
+                        <Border x:Name="alwaysOnTopPanel" BorderBrush="Black" BorderThickness="1" Background="White" Cursor="Hand"
+                                MouseLeftButtonUp="OnTop_Click">
+                            <TextBlock x:Name="alwaysOnTopText" Text="Always on top" Margin="5,0,5,0" Foreground="Black" FontSize="11" HorizontalAlignment="Left"/>
+                        </Border>
+                    </Viewbox>
+                    <Viewbox Stretch="Uniform" HorizontalAlignment="Right">
+                        <Border BorderBrush="Black" BorderThickness="1" Background="White" Cursor="Hand"
+                                MouseLeftButtonUp="SettingsButton_Click">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock x:Name="settingsButtonText" Text="Settings" Margin="5,0,5,0" Foreground="Black" VerticalAlignment="Center"/>
+                                <TextBlock Text="&#xE713;" FontFamily="Segoe MDL2 Assets" FontSize="20" Foreground="Black" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Border>
+                    </Viewbox>
+                </Grid>
+
+                <Grid Grid.Row="2" Grid.Column="4" Margin="0.5">
+                    <Viewbox Stretch="Uniform">
+                        <TextBlock x:Name="Tagline" Text="QuickCal v2.0 - Magnus Petersen" HorizontalAlignment="Center" Margin="0,0,3,0" Foreground="Black"/>
+                    </Viewbox>
+                </Grid>
+                <Grid Grid.Row="2" Grid.Column="0" Margin="0.5">
+                    <Viewbox HorizontalAlignment="Left">
+                        <TextBlock x:Name="info" Text="Spacebar or minimize app to reset date" HorizontalAlignment="Left" Padding="6,6,0,1" Foreground="Black"/>
+                    </Viewbox>
+                </Grid>
+            </Grid>
+
+            <!-- ===================== YEAR VIEW (shown when the window is maximized) ===================== -->
+            <Grid x:Name="yearContent" Visibility="Collapsed">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="34"/>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="20"/>
+                </Grid.RowDefinitions>
+
+                <!-- Year bar: ◀ 2026 ▶ -->
+                <Border Grid.Row="0" Background="#143275" Margin="4,4,4,2">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="44"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="44"/>
+                        </Grid.ColumnDefinitions>
+                        <Border Grid.Column="0" Padding="4,2" BorderBrush="Transparent" BorderThickness="0" Background="Transparent" Cursor="Hand"
+                                MouseLeftButtonDown="YearBack_Click" MouseEnter="Button_MouseEnter" MouseLeave="Button_MouseLeave">
+                            <Viewbox Stretch="Uniform">
+                                <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE112;" FontWeight="Bold" Foreground="White"/>
+                            </Viewbox>
+                        </Border>
+                        <Viewbox Grid.Column="1" Stretch="Uniform" Margin="0,2">
+                            <TextBlock x:Name="yearTitle" Text="2026" FontWeight="Bold" Foreground="White"/>
+                        </Viewbox>
+                        <Border Grid.Column="2" Padding="4,2" BorderBrush="Transparent" BorderThickness="0" Background="Transparent" Cursor="Hand"
+                                MouseLeftButtonDown="YearForward_Click" MouseEnter="Button_MouseEnter" MouseLeave="Button_MouseLeave">
+                            <Viewbox Stretch="Uniform">
+                                <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE111;" FontWeight="Bold" Foreground="White"/>
+                            </Viewbox>
+                        </Border>
+                    </Grid>
+                </Border>
+
+                <!-- 4 x 3 months, filled in code -->
+                <UniformGrid x:Name="yearGrid" Grid.Row="1" Columns="4" Rows="3"/>
+
+                <!-- Bottom row -->
+                <Grid Grid.Row="2">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <Viewbox Grid.Column="0" HorizontalAlignment="Left" Margin="0.5">
+                        <TextBlock x:Name="yearInfo" Text="Spacebar to go to the current year" Padding="6,6,0,1" Foreground="Black"/>
+                    </Viewbox>
+                    <Viewbox Grid.Column="1" Stretch="Uniform" HorizontalAlignment="Left">
+                        <Border x:Name="yearAlwaysOnTopPanel" BorderBrush="Black" BorderThickness="1" Background="White" Cursor="Hand"
+                                MouseLeftButtonUp="OnTop_Click">
+                            <TextBlock x:Name="yearAlwaysOnTopText" Text="Always on top" Margin="5,0,5,0" Foreground="Black" FontSize="11"/>
+                        </Border>
+                    </Viewbox>
+                    <Viewbox Grid.Column="1" Stretch="Uniform" HorizontalAlignment="Right">
+                        <Border BorderBrush="Black" BorderThickness="1" Background="White" Cursor="Hand"
+                                MouseLeftButtonUp="SettingsButton_Click">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock x:Name="yearSettingsText" Text="Settings" Margin="5,0,5,0" Foreground="Black" VerticalAlignment="Center"/>
+                                <TextBlock Text="&#xE713;" FontFamily="Segoe MDL2 Assets" FontSize="20" Foreground="Black" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Border>
+                    </Viewbox>
+                    <Viewbox Grid.Column="2" Stretch="Uniform" Margin="0.5">
+                        <TextBlock x:Name="yearTagline" Text="QuickCal v2.0 - Magnus Petersen" Margin="0,0,3,0" Foreground="Black"/>
+                    </Viewbox>
+                </Grid>
+            </Grid>
+
+            <!-- ===================== TAB 2: SETTINGS ===================== -->
+            <Grid x:Name="tab2Content" Visibility="Collapsed">
+                <StackPanel Margin="10,0,0,0">
+                    <TextBlock x:Name="settingsTitle" Text="Settings" VerticalAlignment="Top" HorizontalAlignment="Left" FontSize="16" FontWeight="Bold" Margin="0,4,4,4" Foreground="Black"/>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Top">
+                            <TextBlock x:Name="languageLabel" Text="Calendar Language" Margin="5,5,10,0" Foreground="Black"/>
+                            <ComboBox x:Name="languageComboBox" HorizontalAlignment="Center" VerticalAlignment="Top" Height="22" Margin="6" FontSize="11" Padding="6,2,4,2" MinWidth="110">
+                                <ComboBoxItem Content="English"/>
+                                <ComboBoxItem Content="Norsk"/>
+                                <ComboBoxItem x:Name="systemLanguageItem" Content="Use system language"/>
+                            </ComboBox>
+                        </StackPanel>
+                        <!-- Getting started: top right -->
+                        <Button x:Name="welcomePageButton" Grid.Column="1" Content="Getting started" Click="WelcomePage_Click"
+                                HorizontalAlignment="Right" VerticalAlignment="Top" FontSize="11" Margin="4,4,15,4" Padding="8,2,8,2"
+                                Style="{StaticResource CustomButtonStyle}" Height="30"/>
+                    </Grid>
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock x:Name="holidaysLabel" Text="Show holidays in calendar" Margin="5,5,10,0" Foreground="Black" VerticalAlignment="Center"/>
+                        <controls:CustomCheckbox x:Name="showHolidaysCheckbox" HorizontalAlignment="Left"/>
+                    </StackPanel>
+                    <StackPanel x:Name="EasterStackPanel" Orientation="Horizontal"
+                                Visibility="{Binding IsChecked, ElementName=showHolidaysCheckbox, Converter={StaticResource BoolToVis}}">
+                        <TextBlock x:Name="easterLabel" Text="Show Easter as a full week off" Margin="5,5,10,0" Foreground="Black" VerticalAlignment="Center"/>
+                        <controls:CustomCheckbox x:Name="easterFullWeekCheckbox" HorizontalAlignment="Left"/>
+                    </StackPanel>
+                    <StackPanel x:Name="weeksStackPanel" Orientation="Horizontal" Margin="0,0,0,5"
+                                Visibility="{Binding IsChecked, ElementName=showHolidaysCheckbox, Converter={StaticResource BoolToVis}}">
+                        <TextBlock x:Name="weeksLabelBefore" Text="Show" Margin="5,0,10,0" Foreground="Black" VerticalAlignment="Center"/>
+                        <TextBox x:Name="numberOfWeeksTextBox" HorizontalAlignment="Left" Padding="4,0,4,0" Width="25" Height="19" MaxLength="1"
+                                 FontSize="12" Foreground="Black" HorizontalContentAlignment="Center"
+                                 PreviewTextInput="NumberOfWeeks_PreviewTextInput" DataObject.Pasting="NumberOfWeeks_Pasting"/>
+                        <TextBlock x:Name="weeksLabelAfter" Text="number of weeks summer vacation (0-3)" HorizontalAlignment="Center" Margin="5,0,0,0" Foreground="Black" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </StackPanel>
+                <!-- Autostart and week icon: stacked bottom right, same width -->
+                <StackPanel Orientation="Vertical" VerticalAlignment="Bottom" HorizontalAlignment="Right" Margin="3,3,15,6">
+                    <Button x:Name="autostartPageButton" Content="Enable autostart" Click="EnableAutostart_Click"
+                            FontSize="11" Margin="0,0,0,4" Padding="8,2,8,2" Style="{StaticResource CustomButtonStyle}" Height="30"/>
+                    <Button x:Name="trayIconPageButton" Content="Always show week number by the clock" Click="TrayIconPage_Click"
+                            FontSize="11" Padding="8,2,8,2" Style="{StaticResource CustomButtonStyle}" Height="30"/>
+                </StackPanel>
+                <Button FontFamily="Segoe MDL2 Assets" Content="&#xE112;" FontWeight="Bold" FontSize="20" Click="BackToTab1_Click"
+                        VerticalAlignment="Bottom" HorizontalAlignment="Left" Margin="13,3,3,3" Style="{StaticResource CustomButtonStyle}"/>
+            </Grid>
+
+            <!-- ===================== TAB 3: AUTOSTART ===================== -->
+            <Grid x:Name="tab3Content" Visibility="Collapsed">
+                <StackPanel Margin="10,0,0,0">
+                    <TextBlock x:Name="autostartTitle" Text="Enable autostart of app when computer reboots" VerticalAlignment="Top" HorizontalAlignment="Left" FontSize="16" FontWeight="Bold" Margin="0,4,4,4" Foreground="Black"/>
+                    <TextBlock x:Name="autostartDescription" Text="QuickCal starts quietly in the notification area (next to the clock) when you sign in. No administrator rights needed."
+                               TextWrapping="Wrap" FontSize="11" Foreground="Black" Margin="0,0,10,0"/>
+                    <Button x:Name="APIbutton" Content="Enable autostart" Click="ToggleAutostart_Click" HorizontalAlignment="Left" FontSize="11" Margin="10" Padding="8,2,8,2" Style="{StaticResource CustomButtonStyle}" Height="34"/>
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock x:Name="startupStateLabel" Text="Startup State:" HorizontalAlignment="Left" Foreground="Black"/>
+                        <TextBlock x:Name="requestResult" FontWeight="Bold" HorizontalAlignment="Left" Margin="8,0,0,0" Text="Not enabled yet" Foreground="Black"/>
+                    </StackPanel>
+                </StackPanel>
+                <Button FontFamily="Segoe MDL2 Assets" Content="&#xE112;" FontWeight="Bold" FontSize="20" Click="BackFromSubPage_Click"
+                        VerticalAlignment="Bottom" HorizontalAlignment="Left" Margin="13,3,3,3" Style="{StaticResource CustomButtonStyle}"/>
+            </Grid>
+
+            <!-- ===================== TAB 4: ALWAYS SHOW WEEK ICON ===================== -->
+            <Grid x:Name="tab4Content" Visibility="Collapsed">
+                <StackPanel Margin="10,0,10,0">
+                    <TextBlock x:Name="trayTitle" Text="Always show the week number by the clock" FontSize="16" FontWeight="Bold" Margin="0,4,4,2" Foreground="Black"/>
+                    <TextBlock x:Name="trayIntro" TextWrapping="Wrap" FontSize="11" Foreground="Black" Margin="0,0,0,3"
+                               Text="Windows hides new icons behind the arrow (^) next to the clock. To keep the week icon visible:"/>
+                    <TextBlock x:Name="trayStep1" TextWrapping="Wrap" FontSize="11" Foreground="Black" Margin="8,0,0,0" Text="1."/>
+                    <TextBlock x:Name="trayStep2" TextWrapping="Wrap" FontSize="11" Foreground="Black" Margin="8,0,0,0" Text="2."/>
+                    <TextBlock x:Name="trayStep3" TextWrapping="Wrap" FontSize="11" Foreground="Black" Margin="8,0,0,0" Text="3."/>
+                    <Button x:Name="openTaskbarSettingsButton" Content="Open taskbar settings" Click="OpenTaskbarSettings_Click"
+                            HorizontalAlignment="Left" FontSize="11" Margin="8,5,0,3" Padding="8,2,8,2" Style="{StaticResource CustomButtonStyle}" Height="28"/>
+                    <TextBlock x:Name="trayTip" TextWrapping="Wrap" FontSize="10" Foreground="#444444" Margin="45,0,0,0" Text="Tip"/>
+                </StackPanel>
+                <Button FontFamily="Segoe MDL2 Assets" Content="&#xE112;" FontWeight="Bold" FontSize="20" Click="BackFromSubPage_Click"
+                        VerticalAlignment="Bottom" HorizontalAlignment="Left" Margin="13,3,3,3" Style="{StaticResource CustomButtonStyle}"/>
+            </Grid>
+
+            <!-- ===================== TAB 5: GETTING STARTED (shown automatically on first run) ===================== -->
+            <Grid x:Name="tab5Content" Visibility="Collapsed">
+                <StackPanel Margin="10,0,10,0">
+                    <TextBlock x:Name="welcomeTitle" Text="Getting started with QuickCal" FontSize="16" FontWeight="Bold" Margin="0,4,4,4" Foreground="Black"/>
+
+                    <!-- 1. Autostart -->
+                    <Grid Margin="0,1">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="24"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="&#xE7E8;" FontFamily="Segoe MDL2 Assets" FontSize="14" Foreground="#143275" VerticalAlignment="Center"/>
+                        <TextBlock x:Name="welcomeAutostartText" Grid.Column="1" Text="Start automatically when you sign in" FontSize="12" FontWeight="SemiBold" Foreground="Black" VerticalAlignment="Center"/>
+                        <Button x:Name="welcomeAutostartButton" Grid.Column="2" Content="Enable autostart" Click="WelcomeAutostart_Click"
+                                FontSize="11" Padding="8,2,8,2" Height="24" MinWidth="150" Style="{StaticResource CustomButtonStyle}"/>
+                    </Grid>
+
+                    <!-- 2. Week number by the clock (mini week icon drawn in the app) -->
+                    <Grid Margin="0,3,0,1">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="24"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <Border Width="16" Height="16" Background="#143275" BorderBrush="#677DE1" BorderThickness="1" HorizontalAlignment="Left" VerticalAlignment="Center">
+                            <Viewbox Margin="1">
+                                <TextBlock x:Name="welcomeWeekIconText" Text="41" FontWeight="Bold" Foreground="White"/>
+                            </Viewbox>
+                        </Border>
+                        <TextBlock x:Name="welcomeTrayText" Grid.Column="1" Text="Always show the week number by the clock" FontSize="12" FontWeight="SemiBold" Foreground="Black" VerticalAlignment="Center"/>
+                        <Button x:Name="welcomeTrayButton" Grid.Column="2" Content="Show me how" Click="WelcomeTray_Click"
+                                FontSize="11" Padding="8,2,8,2" Height="24" MinWidth="150" Style="{StaticResource CustomButtonStyle}"/>
+                    </Grid>
+
+                    <!-- 3. Pin to taskbar -->
+                    <Grid Margin="0,4,0,1">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="24"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="&#xE718;" FontFamily="Segoe MDL2 Assets" FontSize="14" Foreground="#143275" VerticalAlignment="Top" Margin="0,1,0,0"/>
+                        <TextBlock Grid.Column="1" TextWrapping="Wrap" FontSize="11" Foreground="Black">
+                            <Run x:Name="welcomePinTitle" Text="Pin to the taskbar (optional):" FontSize="12" FontWeight="SemiBold"/>
+                            <Run x:Name="welcomePinText" Text="right-click QuickCal on the taskbar and choose Pin to taskbar."/>
+                        </TextBlock>
+                    </Grid>
+
+                    <!-- Tip -->
+                    <Grid Margin="0,5,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="24"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="&#xE82F;" FontFamily="Segoe MDL2 Assets" FontSize="14" Foreground="#C08000" VerticalAlignment="Top" Margin="0,1,0,0"/>
+                        <TextBlock x:Name="welcomeTip" Grid.Column="1" TextWrapping="Wrap" FontSize="10.5" Foreground="#333333" Text="Tip"/>
+                    </Grid>
+                </StackPanel>
+                <Button x:Name="welcomeDoneButton" Content="OK" MinWidth="90" Click="WelcomeDone_Click"
+                        VerticalAlignment="Bottom" HorizontalAlignment="Right" FontSize="12" FontWeight="SemiBold" Margin="3,3,15,6" Padding="16,2,16,2"
+                        Style="{StaticResource CustomButtonStyle}" Height="30"/>
+            </Grid>
+        </Grid>
+    </Viewbox>
+</Window>

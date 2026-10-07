@@ -1,0 +1,102 @@
+/* QuickCal Web - same look as the Windows app (white, dark blue headers, red holidays). */
+:root {
+  --blue: #143275;
+  --week-blue: #677de1;
+  --holiday: rgba(245, 39, 63, 0.59);
+  --hover: #32dcf2;
+  --font: "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: #fff; color: #000; font-family: var(--font); overflow: hidden; }
+button { font-family: inherit; color: inherit; }
+.hidden { display: none !important; }
+
+/* The app is designed at a fixed size and scaled to the window, like WPF's Viewbox */
+#stage { position: fixed; inset: 0; background: #fff; }
+#scaler { position: absolute; left: 0; top: 0; transform-origin: 0 0; background: #fff; }
+.page { position: relative; width: 100%; height: 100%; }
+
+/* ---------- Month blocks (8 x 8 grid: bar, day labels, 6 date rows) ---------- */
+.months3 { display: grid; grid-template-columns: 1fr 1fr 1fr; column-gap: 8px; height: 200px; }
+.month { display: grid; grid-template-columns: repeat(8, 1fr); grid-template-rows: repeat(8, 1fr); min-width: 0; min-height: 0; }
+.bar { grid-row: 1; grid-column: 1 / span 8; background: var(--blue); }
+.barText { grid-row: 1; color: #fff; display: flex; align-items: center; justify-content: center; white-space: nowrap; overflow: hidden; line-height: 1; z-index: 1; }
+.barText.clickable { cursor: pointer; border: 1px solid transparent; }
+.barText.clickable:hover { border-color: var(--hover); }
+.nav { grid-row: 1; z-index: 1; display: flex; align-items: center; justify-content: center; color: #fff; cursor: pointer;
+       background: transparent; border: 2px solid transparent; padding: 1px; }
+.nav:hover { border-color: var(--hover); }
+.nav svg { width: 100%; height: 100%; }
+.dayLabel { grid-row: 2; border: 2px solid #000; display: flex; align-items: center; justify-content: center; white-space: nowrap; overflow: hidden; line-height: 1; }
+
+.cell { border: 1px solid #000; display: flex; align-items: center; justify-content: center; line-height: 1; position: relative; min-width: 0; min-height: 0; }
+.cell.day { cursor: default; }
+.cell.day:hover { box-shadow: inset 0 0 0 1px var(--hover); border-color: var(--hover); }
+.cell.week { background: var(--week-blue); color: #fff; }
+.cell.today { background: var(--blue); color: #fff; border: 2px solid red; }
+.cell.today:hover { box-shadow: none; border-color: red; }
+.cell.holiday { background: var(--holiday); color: #fff; }
+.cell.gold { background: url("assets/gold_texture.jpg") center / 100% 100%; font-weight: bold; opacity: 0.8; }
+
+/* ---------- Year view ---------- */
+#yearView { display: grid; grid-template-rows: 34px 1fr 20px; }
+.yearBar { margin: 4px 4px 2px; background: var(--blue); color: #fff; display: grid; grid-template-columns: 44px 1fr 44px; align-items: stretch; }
+.yearBar .navBtn { background: transparent; border: 2px solid transparent; color: #fff; cursor: pointer; padding: 2px 8px; }
+.yearBar .navBtn:hover { border-color: var(--hover); }
+.yearBar .navBtn svg { width: 100%; height: 100%; }
+#yearTitle { display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 20px; line-height: 1; }
+.yearGrid { display: grid; grid-template-columns: repeat(4, 1fr); grid-template-rows: repeat(3, 1fr); min-height: 0; }
+.yearGrid .month { margin: 4px; }
+
+/* ---------- Bottom row ---------- */
+.bottomRow.three { display: grid; grid-template-columns: 1fr 8px 1fr 8px 1fr; height: 20px; align-items: center; }
+.bottomRow > :nth-child(1) { grid-column: 1; }
+.bottomRow > :nth-child(2) { grid-column: 3; }
+.bottomRow > :nth-child(3) { grid-column: 5; }
+.smallInfo { font-size: 10.5px; padding-left: 6px; white-space: nowrap; display: inline-block; }
+.fitLeft { overflow: hidden; }
+.right { display: flex; justify-content: flex-end; }
+.linkBox { border: 1px solid #000; background: #fff; font-size: 12px; line-height: 15px; padding: 0 4px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; }
+.linkBox:hover { background: #eee; }
+.gear { width: 14px; height: 14px; }
+.tagline { text-align: center; font-size: 12.5px; white-space: nowrap; overflow: hidden; }
+
+/* ---------- Text pages (settings, install, autostart, getting started) ---------- */
+.textPage { padding: 0 10px; font-size: 13px; }
+.textPage h1 { font-size: 16px; margin: 4px 0 6px; }
+.textPage p { margin: 0 0 4px; font-size: 11.5px; line-height: 1.35; }
+.textPage ol { margin: 0 0 4px; padding-left: 26px; font-size: 11.5px; line-height: 1.35; }
+.textPage .tip { color: #444; font-size: 10.5px; }
+.btn { background: rgba(8, 8, 8, 0.2); border: 0; font-size: 11px; padding: 0 10px; height: 28px; cursor: pointer; }
+.btn:hover { background: rgba(8, 8, 8, 0.3); }
+.btn:active { background: rgba(8, 8, 8, 0.4); }
+.btn:disabled { opacity: 0.5; cursor: default; }
+.btn.topRight { position: absolute; top: 4px; right: 15px; }
+.btn.back { position: absolute; left: 13px; bottom: 3px; width: 40px; height: 32px; padding: 4px 8px; }
+.btn.back svg { width: 100%; height: 100%; }
+.btn.inline { margin: 2px 0 6px 26px; }
+.stackBottomRight { position: absolute; right: 15px; bottom: 6px; display: flex; flex-direction: column; gap: 4px; }
+.setRow { display: flex; align-items: center; gap: 10px; margin: 2px 0 2px 5px; min-height: 30px; }
+.setRow select { font-size: 11px; height: 22px; min-width: 120px; }
+.check { background: transparent; border: 0; font-family: "Segoe UI Symbol", var(--font); font-size: 26px; line-height: 26px; padding: 0; cursor: pointer; color: #000; }
+.check.on { color: blue; }
+#weeksInput { width: 25px; height: 19px; text-align: center; font-size: 12px; padding: 0; }
+
+.wRow { display: grid; grid-template-columns: 24px 1fr auto; align-items: center; min-height: 28px; margin: 2px 0; column-gap: 0; }
+.wIcon { width: 16px; height: 16px; }
+.wText { font-size: 12px; font-weight: 600; }
+.wText small { font-weight: 400; font-size: 11px; }
+.wBtn { min-width: 150px; height: 24px; }
+.tipRow { align-items: start; }
+.tipRow .wIcon { margin-top: 1px; }
+.wTip { grid-column: 2 / span 2; font-size: 10.5px; color: #333; line-height: 1.35; }
+.miniWeek { width: 16px; height: 16px; background: var(--blue); border: 1px solid var(--week-blue); color: #fff; font-size: 9px; font-weight: bold; display: flex; align-items: center; justify-content: center; }
+.okBtn { position: absolute; right: 15px; bottom: 6px; min-width: 90px; height: 30px; font-size: 12px; font-weight: 600; }
+
+/* ---------- Popups (month/year picker, holiday tooltip) ---------- */
+.menu { position: fixed; z-index: 10; background: #fff; border: 1px solid #999; box-shadow: 0 4px 14px rgba(0,0,0,.2); padding: 2px 0; font-size: 12px; min-width: 110px; max-height: calc(100vh - 4px); overflow-y: auto; }
+.menu div { padding: 1px 14px 1px 24px; line-height: 15px; cursor: pointer; position: relative; white-space: nowrap; }
+.menu div:hover { background: #e5f1fb; }
+.menu div.current::before { content: "✓"; position: absolute; left: 7px; }
+.tooltip { position: fixed; z-index: 11; background: #fff; border: 1px solid #888; padding: 3px 7px; font-size: 12px; box-shadow: 0 2px 6px rgba(0,0,0,.15); pointer-events: none; white-space: nowrap; }

@@ -1,0 +1,752 @@
+/* QuickCal Web - ISO week calendar with Norwegian holidays.
+   Same features as the Windows version, adapted to what a web app can do:
+   the week number is shown as a badge on the taskbar icon (installed app), not by the clock. */
+(function () {
+  'use strict';
+
+  // =====================================================================================
+  // Settings (saved in the browser)
+  // =====================================================================================
+
+  var STORAGE_KEY = 'quickcal.settings';
+  var DEFAULTS = {
+    language: 'UseSystemLanguage', // 'English' | 'Norwegian' | 'UseSystemLanguage'
+    showHolidays: true,
+    easterFullWeek: true,
+    summerWeeks: 3,
+    welcomeShown: false,
+    sizedOnce: false
+  };
+
+  function loadSettings() {
+    try {
+      var raw = localStorage.getItem(STORAGE_KEY);
+      return Object.assign({}, DEFAULTS, raw ? JSON.parse(raw) : {});
+    } catch (e) {
+      return Object.assign({}, DEFAULTS);
+    }
+  }
+  function saveSettings() {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(settings)); } catch (e) { /* private mode etc. */ }
+  }
+  var settings = loadSettings();
+
+  // =====================================================================================
+  // Language and texts
+  // =====================================================================================
+
+  function systemLang() {
+    return (navigator.languages && navigator.languages[0]) || navigator.language || 'en';
+  }
+  function isNorwegianCode(code) {
+    code = (code || '').toLowerCase();
+    return code === 'no' || code.indexOf('nb') === 0 || code.indexOf('nn') === 0 || code.indexOf('no-') === 0;
+  }
+  function norwegian() {
+    if (settings.language === 'Norwegian') return true;
+    if (settings.language === 'UseSystemLanguage') return isNorwegianCode(systemLang());
+    return false;
+  }
+  function T(en, no) { return norwegian() ? no : en; }
+  function cap(s) { return s ? s.charAt(0).toLocaleUpperCase(systemLang()) + s.slice(1) : s; }
+
+  var EN_MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  var NO_MONTHS = ['Januar', 'Februar', 'Mars', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Desember'];
+
+  function monthNames() {
+    if (settings.language === 'Norwegian') return NO_MONTHS;
+    if (settings.language === 'English') return EN_MONTHS;
+    try {
+      // Month names in the system language, any language (no hard-coding)
+      var f = new Intl.DateTimeFormat(systemLang(), { month: 'long' });
+      var result = [];
+      for (var i = 0; i < 12; i++) result.push(cap(f.format(new Date(2001, i, 1))));
+      return result;
+    } catch (e) {
+      return EN_MONTHS;
+    }
+  }
+
+  /** Column headers: week label, then Monday ... Sunday */
+  function dayNames() {
+    if (settings.language === 'Norwegian') return ['Uke', 'Ma', 'Ti', 'On', 'To', 'Fr', 'Lø', 'Sø'];
+    if (settings.language === 'English') return ['Week', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'];
+    var result = [norwegian() ? 'Uke' : 'Week'];
+    try {
+      var f = new Intl.DateTimeFormat(systemLang(), { weekday: 'short' });
+      for (var i = 0; i < 7; i++) {
+        var name = f.format(new Date(2001, 0, 1 + i)).replace(/\.+$/, ''); // 1 Jan 2001 was a Monday
+        result.push(cap(Array.from(name).slice(0, 2).join('')));      // "man." -> "Ma", "Mon" -> "Mo"
+      }
+    } catch (e) {
+      return ['Week', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'];
+    }
+    return result;
+  }
+
+  var HOLIDAY_TEXTS = {
+    fixed: [['New Year’s Day', '1. Nyttårsdag'], ['Labour Day', 'Arbeidernes dag'], ['Constitution Day', 'Grunnlovsdagen'], ['New Year’s Eve', 'Nyttårsaften']],
+    christmas: [['Christmas break', 'Lillejulaften'], ['Christmas Eve', 'Julaften'], ['Christmas Day', '1. Juledag'], ['Boxing Day', '2. Juledag'], ['Christmas break', 'Juleferie']],
+    easter: [['Maundy Thursday', 'Skjærtorsdag'], ['Good Friday', 'Langfredag'], ['Easter Eve', 'Påskeaften'], ['Easter Sunday', '1. påskedag'], ['Easter Monday', '2. påskedag'], ['Easter', 'Påske']],
+    related: [['Ascension Day', 'Kristi himmelfartsdag'], ['Pentecost', '1. Pinsedag'], ['Whit Monday', '2. Pinsedag']],
+    summer: ['Summer break', 'Sommerferie'],
+    birthday: ['Developer’s birthday', 'Utviklerens bursdag']
+  };
+  function tx(pair) { return T(pair[0], pair[1]); }
+
+  // =====================================================================================
+  // Dates: ISO weeks, Easter, holidays
+  // =====================================================================================
+
+  function dateKey(d) { return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate(); }
+  function addDays(d, n) { return new Date(d.getFullYear(), d.getMonth(), d.getDate() + n); }
+  function today() { var n = new Date(); return new Date(n.getFullYear(), n.getMonth(), n.getDate()); }
+
+  function isoWeek(d) {
+    var t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+    var day = t.getUTCDay() || 7;
+    t.setUTCDate(t.getUTCDate() + 4 - day);
+    var yearStart = new Date(Date.UTC(t.getUTCFullYear(), 0, 1));
+    return Math.ceil(((t - yearStart) / 86400000 + 1) / 7);
+  }
+
+  function isoWeekMonday(year, week) {
+    var jan4 = new Date(year, 0, 4);
+    var offset = (jan4.getDay() + 6) % 7;
+    return new Date(year, 0, 4 - offset + (week - 1) * 7);
+  }
+
+  /** Gregorian Easter Sunday (Meeus algorithm) */
+  function easterSunday(year) {
+    var a = year % 19, b = Math.floor(year / 100), c = year % 100, d = Math.floor(b / 4), e = b % 4;
+    var f = Math.floor((b + 8) / 25), g = Math.floor((b - f + 1) / 3);
+    var h = (19 * a + b - d - g + 15) % 30, i = Math.floor(c / 4), k = c % 4;
+    var l = (32 + 2 * e + 2 * i - h - k) % 7, m = Math.floor((a + 11 * h + 22 * l) / 451);
+    var month = Math.floor((h + l - 7 * m + 114) / 31), day = ((h + l - 7 * m + 114) % 31) + 1;
+    return new Date(year, month - 1, day);
+  }
+
+  /** Holidays for one year: key -> tooltip. First rule wins if dates overlap. */
+  function holidaysForYear(year) {
+    var map = {};
+    function add(d, text) { var k = dateKey(d); if (!(k in map)) map[k] = text; }
+
+    add(new Date(year, 0, 1), tx(HOLIDAY_TEXTS.fixed[0]));
+    add(new Date(year, 4, 1), tx(HOLIDAY_TEXTS.fixed[1]));
+    add(new Date(year, 4, 17), tx(HOLIDAY_TEXTS.fixed[2]));
+    add(new Date(year, 11, 31), tx(HOLIDAY_TEXTS.fixed[3]));
+
+    for (var day = 23; day <= 30; day++) {
+      var idx = day <= 26 ? day - 23 : 4;
+      add(new Date(year, 11, day), tx(HOLIDAY_TEXTS.christmas[idx]));
+    }
+
+    var easter = easterSunday(year);
+    var easterDays = [];
+    if (settings.easterFullWeek) {
+      var monday = addDays(easter, -((easter.getDay() + 6) % 7));
+      for (var d = monday; d <= addDays(easter, 1); d = addDays(d, 1)) easterDays.push(d);
+    } else {
+      easterDays = [addDays(easter, -3), addDays(easter, -2), easter, addDays(easter, 1)];
+    }
+    easterDays.forEach(function (d) {
+      var diff = Math.round((d - easter) / 86400000);
+      var map2 = { '-3': 0, '-2': 1, '-1': 2, '0': 3, '1': 4 };
+      add(d, tx(HOLIDAY_TEXTS.easter[diff in map2 ? map2[diff] : 5]));
+    });
+
+    add(addDays(easter, 39), tx(HOLIDAY_TEXTS.related[0]));
+    add(addDays(easter, 49), tx(HOLIDAY_TEXTS.related[1]));
+    add(addDays(easter, 50), tx(HOLIDAY_TEXTS.related[2]));
+
+    var weeks = settings.summerWeeks;
+    for (var w = 28; w <= 30; w++) {
+      var include = weeks === 3 || (weeks === 2 && w >= 29) || (weeks === 1 && w === 30);
+      if (!include) continue;
+      var mon = isoWeekMonday(year, w);
+      for (var j = 0; j < 7; j++) add(addDays(mon, j), tx(HOLIDAY_TEXTS.summer));
+    }
+    return map;
+  }
+
+  var holidays = {};
+  function loadHolidays(years) {
+    holidays = {};
+    if (!settings.showHolidays) return;
+    years.forEach(function (y) {
+      var m = holidaysForYear(y);
+      Object.keys(m).forEach(function (k) { if (!(k in holidays)) holidays[k] = m[k]; });
+    });
+  }
+
+  // =====================================================================================
+  // Text fitting (like WPF Viewbox: text grows/shrinks to fill its box)
+  // =====================================================================================
+
+  var measureCtx = document.createElement('canvas').getContext('2d');
+  var FONT = getComputedStyle(document.documentElement).getPropertyValue('--font') || 'Segoe UI, sans-serif';
+  function fitSize(text, w, h, weight) {
+    measureCtx.font = (weight || 'normal') + ' 100px ' + FONT;
+    var width = Math.max(1, measureCtx.measureText(text).width) / 100;
+    return Math.max(4, Math.min(w / width, h / 1.33));
+  }
+
+  // =====================================================================================
+  // Drawing one month (8 x 8 grid: bar, day labels, 6 date rows)
+  // =====================================================================================
+
+  function el(tag, cls, text) {
+    var e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text != null) e.textContent = text;
+    return e;
+  }
+  function place(e, row, col, colSpan) {
+    e.style.gridRow = String(row);
+    e.style.gridColumn = col + (colSpan ? ' / span ' + colSpan : '');
+    return e;
+  }
+
+  var ARROW_LEFT = '<svg viewBox="0 0 24 24"><path d="M20 12H5m6-7-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.6"/></svg>';
+  var ARROW_RIGHT = '<svg viewBox="0 0 24 24"><path d="M4 12h15m-6-7 7 7-7 7" fill="none" stroke="currentColor" stroke-width="2.6"/></svg>';
+
+  /**
+   * kind: 'side'   = month + year (left/right month in the 3-month view)
+   *       'middle' = arrows + clickable month + year (middle month)
+   *       'year'   = month name only (year view)
+   */
+  function renderMonth(container, year, month0, kind, cellW, cellH) {
+    container.innerHTML = '';
+    var names = monthNames(), labels = dayNames();
+    container.appendChild(el('div', 'bar'));
+
+    var monthText, yearText;
+    if (kind === 'year') {
+      monthText = place(el('div', 'barText', names[month0]), 1, 2, 6);
+      monthText.style.fontSize = fitSize(names[month0], cellW * 6 - 4, cellH - 2) + 'px';
+      container.appendChild(monthText);
+    } else {
+      monthText = place(el('div', 'barText', names[month0]), 1, 3, 3);
+      yearText = place(el('div', 'barText', String(year)), 1, 6, 2);
+      monthText.style.fontSize = fitSize(names[month0], cellW * 3 - 4, cellH - 2) + 'px';
+      yearText.style.fontSize = fitSize(String(year), cellW * 2 - 4, cellH - 4) + 'px';
+      container.appendChild(monthText);
+      container.appendChild(yearText);
+      if (kind === 'middle') {
+        monthText.classList.add('clickable');
+        yearText.classList.add('clickable');
+        monthText.addEventListener('click', function () { openMonthMenu(monthText); });
+        yearText.addEventListener('click', function () { openYearMenu(yearText); });
+        var back = place(el('button', 'nav'), 1, 1); back.innerHTML = ARROW_LEFT; back.title = T('Previous month', 'Forrige måned');
+        var fwd = place(el('button', 'nav'), 1, 8); fwd.innerHTML = ARROW_RIGHT; fwd.title = T('Next month', 'Neste måned');
+        back.addEventListener('click', function () { changeMonth(-1); });
+        fwd.addEventListener('click', function () { changeMonth(1); });
+        container.appendChild(back);
+        container.appendChild(fwd);
+      }
+    }
+
+    for (var x = 0; x < 8; x++) {
+      var label = place(el('div', 'dayLabel', labels[x]), 2, x + 1);
+      label.style.fontSize = fitSize(labels[x], cellW - 4 - (x === 0 ? 1.6 : 1), cellH - 4 - 1) + 'px';
+      container.appendChild(label);
+    }
+
+    var first = new Date(year, month0, 1);
+    var offset = (first.getDay() + 6) % 7;
+    var daysInMonth = new Date(year, month0 + 1, 0).getDate();
+    var t = today();
+    var dateFont = Math.min(fitSize('28', cellW - 2 - 3.2, cellH - 2 - 3.2), (cellH - 2 - 3.2) / 1.33) + 'px';
+
+    for (var day = 1; day <= daysInMonth; day++) {
+      var cellIndex = offset + day - 1;
+      var row = 3 + Math.floor(cellIndex / 7);
+      var col = (cellIndex % 7) + 2;
+      var date = new Date(year, month0, day);
+      var key = dateKey(date);
+      var cell = place(el('div', 'cell day', String(day)), row, col);
+      cell.style.fontSize = dateFont;
+
+      if (date.getTime() === t.getTime()) {
+        cell.className = 'cell today';
+      } else if (key in holidays) {
+        cell.classList.add('holiday');
+        cell.dataset.tip = holidays[key];
+      } else if (month0 === 8 && day === 5) {
+        cell.classList.add('gold');
+        cell.dataset.tip = tx(HOLIDAY_TEXTS.birthday);
+      }
+      container.appendChild(cell);
+
+      if (col === 2 || day === 1) {
+        var wk = place(el('div', 'cell week', String(isoWeek(date))), row, 1);
+        wk.style.fontSize = dateFont;
+        container.appendChild(wk);
+      }
+    }
+  }
+
+  // =====================================================================================
+  // Views and navigation
+  // =====================================================================================
+
+  var $ = function (id) { return document.getElementById(id); };
+  var pages = ['monthView', 'yearView', 'settingsPage', 'installPage', 'autostartPage', 'welcomePage'];
+  var currentPage = 'monthView';
+  var activeMonth = new Date(today().getFullYear(), today().getMonth(), 1);
+  var activeYear = today().getFullYear();
+  var subPageReturn = 'settingsPage';
+  var welcomeFromSettings = false;
+
+  function isMaximized() {
+    return window.outerWidth >= screen.availWidth - 16 && window.outerHeight >= screen.availHeight - 16;
+  }
+  function isCalendarPage(id) { return id === 'monthView' || id === 'yearView'; }
+
+  function showPage(id) {
+    closePopups();
+    pages.forEach(function (p) { $(p).classList.toggle('hidden', p !== id); });
+    currentPage = id;
+    var page = $(id), scaler = $('scaler');
+    scaler.style.width = page.dataset.w + 'px';
+    scaler.style.height = page.dataset.h + 'px';
+    rescale();
+  }
+
+  function rescale() {
+    var page = $(currentPage), scaler = $('scaler');
+    var w = +page.dataset.w, h = +page.dataset.h;
+    var s = Math.min(window.innerWidth / w, window.innerHeight / h);
+    // Text pages in a maximized window: natural size, centered (not blown up)
+    if (!isCalendarPage(currentPage) && isMaximized()) s = Math.min(s, 1);
+    scaler.style.transform = 'scale(' + s + ')';
+    scaler.style.left = Math.max(0, (window.innerWidth - w * s) / 2) + 'px';
+    scaler.style.top = Math.max(0, (window.innerHeight - h * s) / 2) + 'px';
+  }
+
+  function showCalendar() {
+    if (isMaximized()) { showPage('yearView'); renderYearView(); }
+    else { showPage('monthView'); renderMonthView(); }
+  }
+
+  function resetToToday() {
+    var t = today();
+    activeMonth = new Date(t.getFullYear(), t.getMonth(), 1);
+    activeYear = t.getFullYear();
+    showCalendar();
+  }
+
+  function renderMonthView() {
+    var prev = new Date(activeMonth.getFullYear(), activeMonth.getMonth() - 1, 1);
+    var next = new Date(activeMonth.getFullYear(), activeMonth.getMonth() + 1, 1);
+    loadHolidays(uniq([prev.getFullYear(), activeMonth.getFullYear(), next.getFullYear()]));
+    var cw = (600 - 16) / 3 / 8, ch = 200 / 8;
+    renderMonth($('m1'), prev.getFullYear(), prev.getMonth(), 'side', cw, ch);
+    renderMonth($('m2'), activeMonth.getFullYear(), activeMonth.getMonth(), 'middle', cw, ch);
+    renderMonth($('m3'), next.getFullYear(), next.getMonth(), 'side', cw, ch);
+  }
+
+  function renderYearView() {
+    $('yearTitle').textContent = String(activeYear);
+    loadHolidays([activeYear]);
+    var grid = $('yearGrid');
+    grid.innerHTML = '';
+    var cw = (1024 / 4 - 8) / 8, ch = ((680 - 34 - 20) / 3 - 8) / 8;
+    for (var m = 0; m < 12; m++) {
+      var box = el('div', 'month');
+      grid.appendChild(box);
+      renderMonth(box, activeYear, m, 'year', cw, ch);
+    }
+  }
+
+  function uniq(a) { return a.filter(function (v, i) { return a.indexOf(v) === i; }); }
+
+  function changeMonth(n) {
+    activeMonth = new Date(activeMonth.getFullYear(), activeMonth.getMonth() + n, 1);
+    renderMonthView();
+  }
+  function changeYear(n) {
+    if (currentPage === 'yearView') { activeYear += n; renderYearView(); }
+    else { activeMonth = new Date(activeMonth.getFullYear() + n, activeMonth.getMonth(), 1); renderMonthView(); }
+  }
+
+  // ---------- Month / year pickers ----------
+  function showMenu(anchor, items) {
+    var menu = $('menu');
+    menu.innerHTML = '';
+    items.forEach(function (it) {
+      var row = el('div', it.current ? 'current' : '', it.label);
+      row.addEventListener('click', function (e) { e.stopPropagation(); closePopups(); it.action(); });
+      menu.appendChild(row);
+    });
+    menu.classList.remove('hidden');
+    var r = anchor.getBoundingClientRect();
+    var top = r.bottom + 2, left = r.left;
+    var mh = menu.offsetHeight, mw = menu.offsetWidth;
+    if (top + mh > window.innerHeight) top = Math.max(0, window.innerHeight - mh - 2);
+    if (left + mw > window.innerWidth) left = Math.max(0, window.innerWidth - mw - 2);
+    menu.style.top = top + 'px';
+    menu.style.left = left + 'px';
+  }
+  function openMonthMenu(anchor) {
+    var names = monthNames();
+    showMenu(anchor, names.map(function (n, i) {
+      return { label: n, current: i === activeMonth.getMonth(), action: function () { activeMonth = new Date(activeMonth.getFullYear(), i, 1); renderMonthView(); } };
+    }));
+  }
+  function openYearMenu(anchor) {
+    var y0 = activeMonth.getFullYear(), items = [];
+    for (var y = y0 - 3; y <= y0 + 3; y++) {
+      (function (year) {
+        items.push({ label: String(year), current: year === y0, action: function () { activeMonth = new Date(year, activeMonth.getMonth(), 1); renderMonthView(); } });
+      })(y);
+    }
+    showMenu(anchor, items);
+  }
+
+  // ---------- Holiday tooltips ----------
+  var tipTimer = null;
+  function showTip(cell) {
+    var tip = $('tooltip');
+    tip.textContent = cell.dataset.tip;
+    tip.classList.remove('hidden');
+    var r = cell.getBoundingClientRect();
+    var top = r.bottom + 4, left = r.left;
+    if (top + tip.offsetHeight > window.innerHeight) top = r.top - tip.offsetHeight - 4;
+    if (left + tip.offsetWidth > window.innerWidth) left = window.innerWidth - tip.offsetWidth - 4;
+    tip.style.top = top + 'px';
+    tip.style.left = Math.max(0, left) + 'px';
+  }
+  function hideTip() { clearTimeout(tipTimer); $('tooltip').classList.add('hidden'); }
+  function closePopups() { $('menu').classList.add('hidden'); hideTip(); }
+
+  var scalerEl = document.getElementById('scaler');
+  scalerEl.addEventListener('mouseover', function (e) {
+    var cell = e.target.closest && e.target.closest('.cell[data-tip]');
+    if (!cell) return;
+    clearTimeout(tipTimer);
+    tipTimer = setTimeout(function () { showTip(cell); }, 400);
+  });
+  scalerEl.addEventListener('mouseout', function (e) {
+    var cell = e.target.closest && e.target.closest('.cell[data-tip]');
+    if (cell && !cell.contains(e.relatedTarget)) hideTip();
+  });
+  scalerEl.addEventListener('click', function (e) {
+    var cell = e.target.closest && e.target.closest('.cell[data-tip]');
+    if (cell) { clearTimeout(tipTimer); showTip(cell); }
+  });
+  document.addEventListener('click', function (e) {
+    if (!$('menu').contains(e.target) && !(e.target.closest && e.target.closest('.clickable'))) $('menu').classList.add('hidden');
+  });
+
+  // ---------- Keyboard: ← → month (year in year view), ↑ ↓ year, Space = today ----------
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') { closePopups(); return; }
+    if (e.repeat || !isCalendarPage(currentPage)) return;
+    var tag = (e.target && e.target.tagName) || '';
+    if (tag === 'INPUT' || tag === 'SELECT') return;
+    var yearView = currentPage === 'yearView';
+    switch (e.key) {
+      case 'ArrowRight': yearView ? changeYear(1) : changeMonth(1); break;
+      case 'ArrowLeft': yearView ? changeYear(-1) : changeMonth(-1); break;
+      case 'ArrowUp': changeYear(1); break;
+      case 'ArrowDown': changeYear(-1); break;
+      case ' ': case 'Spacebar': resetToToday(); break;
+      default: return;
+    }
+    closePopups();
+    e.preventDefault();
+  });
+
+  $('yearBack').addEventListener('click', function () { changeYear(-1); });
+  $('yearForward').addEventListener('click', function () { changeYear(1); });
+
+  // ---------- Window behaviour ----------
+  var wasMaximized = isMaximized();
+  window.addEventListener('resize', function () {
+    closePopups();
+    var max = isMaximized();
+    if (max !== wasMaximized) {
+      wasMaximized = max;
+      // Maximize = whole year, back to normal = 3 months with the current month in the middle
+      if (isCalendarPage(currentPage)) { resetToToday(); return; }
+    }
+    rescale();
+  });
+
+  // "Minimize app to reset date"
+  var wasHidden = false;
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden) { wasHidden = true; return; }
+    if (wasHidden && isCalendarPage(currentPage)) resetToToday();
+    wasHidden = false;
+    updateBadge(true);
+  });
+
+  // =====================================================================================
+  // Week number badge on the taskbar icon (installed app)
+  // =====================================================================================
+
+  var shownWeek = -1, shownDay = dateKey(today());
+  function updateBadge(force) {
+    var t = today();
+    var week = isoWeek(t);
+    if (force || week !== shownWeek) {
+      shownWeek = week;
+      if ('setAppBadge' in navigator) {
+        try { navigator.setAppBadge(week).catch(function () {}); } catch (e) { /* not supported */ }
+      }
+      document.title = 'QuickCal – ' + T('week ', 'uke ') + week;
+      $('wWeekIcon').textContent = String(week);
+    }
+    var k = dateKey(t);
+    if (k !== shownDay) {
+      shownDay = k;
+      if (currentPage === 'monthView') renderMonthView();
+      else if (currentPage === 'yearView') renderYearView();
+    }
+  }
+  setInterval(function () { updateBadge(false); }, 30000);
+  window.addEventListener('focus', function () { updateBadge(false); });
+  window.addEventListener('pageshow', function () { updateBadge(true); });
+
+  // =====================================================================================
+  // Install as app
+  // =====================================================================================
+
+  var installPrompt = null;
+  function isInstalled() {
+    return (window.matchMedia && (matchMedia('(display-mode: standalone)').matches || matchMedia('(display-mode: window-controls-overlay)').matches)) ||
+      window.navigator.standalone === true;
+  }
+  function browserKind() {
+    var ua = navigator.userAgent || '';
+    var brands = (navigator.userAgentData && navigator.userAgentData.brands) || [];
+    if (/Edg\//.test(ua) || brands.some(function (b) { return /Edge/i.test(b.brand); })) return 'edge';
+    if (/Chrome\//.test(ua) || brands.some(function (b) { return /Chrome/i.test(b.brand); })) return 'chrome';
+    return 'other';
+  }
+
+  window.addEventListener('beforeinstallprompt', function (e) {
+    e.preventDefault();
+    installPrompt = e;
+    updateInstallButtons();
+  });
+  window.addEventListener('appinstalled', function () {
+    installPrompt = null;
+    updateInstallButtons();
+  });
+
+  function runInstall() {
+    if (!installPrompt) { openSubPage('installPage'); return; }
+    installPrompt.prompt();
+    installPrompt.userChoice.then(function () { installPrompt = null; updateInstallButtons(); });
+  }
+
+  function updateInstallButtons() {
+    var installed = isInstalled();
+    var w = $('wInstallBtn'), now = $('installNowBtn');
+    if (installed) {
+      w.textContent = T('Installed ✓', 'Installert ✓');
+      w.disabled = true;
+    } else {
+      w.disabled = false;
+      w.textContent = installPrompt ? T('Install', 'Installer') : T('Show me how', 'Vis meg hvordan');
+    }
+    now.classList.toggle('hidden', !installPrompt || installed);
+    now.textContent = T('Install QuickCal now', 'Installer QuickCal nå');
+  }
+
+  // =====================================================================================
+  // Pages: settings, install, autostart, getting started
+  // =====================================================================================
+
+  function openSubPage(id) {
+    subPageReturn = currentPage === 'welcomePage' ? 'welcomePage' : 'settingsPage';
+    fillHelpPages();
+    showPage(id);
+  }
+  Array.prototype.forEach.call(document.querySelectorAll('.subBack'), function (b) {
+    b.addEventListener('click', function () { showPage(subPageReturn); });
+  });
+
+  function setCheck(btn, on) { btn.classList.toggle('on', on); btn.textContent = on ? '🗹' : '☐'; btn.dataset.on = on ? '1' : ''; }
+  function isChecked(btn) { return btn.dataset.on === '1'; }
+  function updateHolidayRows() {
+    var on = isChecked($('holidaysCheck'));
+    Array.prototype.forEach.call(document.querySelectorAll('.dependsOnHolidays'), function (r) { r.classList.toggle('hidden', !on); });
+  }
+
+  function openSettings() {
+    $('languageSelect').value = settings.language;
+    setCheck($('holidaysCheck'), settings.showHolidays);
+    setCheck($('easterCheck'), settings.easterFullWeek);
+    $('weeksInput').value = String(settings.summerWeeks);
+    updateHolidayRows();
+    showPage('settingsPage');
+  }
+  $('settingsBtn1').addEventListener('click', openSettings);
+  $('settingsBtn2').addEventListener('click', openSettings);
+  $('holidaysCheck').addEventListener('click', function () { setCheck(this, !isChecked(this)); updateHolidayRows(); });
+  $('easterCheck').addEventListener('click', function () { setCheck(this, !isChecked(this)); });
+  $('weeksInput').addEventListener('input', function () { this.value = this.value.replace(/[^0-3]/g, '').slice(0, 1); });
+
+  $('settingsBack').addEventListener('click', function () {
+    settings.language = $('languageSelect').value;
+    settings.showHolidays = isChecked($('holidaysCheck'));
+    settings.easterFullWeek = isChecked($('easterCheck'));
+    var w = parseInt($('weeksInput').value, 10);
+    if (!isNaN(w)) settings.summerWeeks = Math.max(0, Math.min(3, w));
+    saveSettings();
+    applyTexts();
+    updateBadge(true);
+    showCalendar();
+  });
+  $('installPageBtn').addEventListener('click', function () { openSubPage('installPage'); });
+  $('autostartPageBtn').addEventListener('click', function () { openSubPage('autostartPage'); });
+  $('installNowBtn').addEventListener('click', runInstall);
+
+  function showWelcome() {
+    welcomeFromSettings = currentPage === 'settingsPage';
+    updateInstallButtons();
+    showPage('welcomePage');
+  }
+  $('welcomeBtn').addEventListener('click', showWelcome);
+  $('wInstallBtn').addEventListener('click', runInstall);
+  $('wAutostartBtn').addEventListener('click', function () { openSubPage('autostartPage'); });
+  $('welcomeOk').addEventListener('click', function () {
+    if (welcomeFromSettings) showPage('settingsPage'); else showCalendar();
+  });
+
+  function setList(id, items) {
+    var ol = $(id);
+    ol.innerHTML = '';
+    items.forEach(function (t) { ol.appendChild(el('li', '', t)); });
+  }
+
+  function fillHelpPages() {
+    var b = browserKind();
+
+    // Install page
+    $('installTitle').textContent = T('Install QuickCal as an app', 'Installer QuickCal som app');
+    $('installIntro').textContent = T(
+      'As an app, QuickCal gets its own window, works offline and shows the week number on its taskbar icon.',
+      'Som app får QuickCal sitt eget vindu, virker uten nett og viser ukenummeret på ikonet på oppgavelinjen.');
+    var pin = T('Right-click the QuickCal icon on the taskbar and choose “Pin to taskbar”. The week number is shown on the icon.',
+      'Høyreklikk QuickCal-ikonet på oppgavelinjen og velg «Fest til oppgavelinjen». Ukenummeret vises på ikonet.');
+    if (isInstalled()) {
+      setList('installSteps', [T('QuickCal is already installed. ✓', 'QuickCal er allerede installert. ✓'), pin]);
+    } else if (b === 'edge') {
+      setList('installSteps', [
+        T('Click the app icon in the address bar (“App available”), or open the … menu → Apps → Install this site as an app.',
+          'Klikk app-ikonet i adressefeltet («App tilgjengelig»), eller åpne menyen … → Apper → Installer dette nettstedet som en app.'),
+        T('Confirm with Install. QuickCal opens in its own window.', 'Bekreft med Installer. QuickCal åpnes i sitt eget vindu.'),
+        pin]);
+    } else if (b === 'chrome') {
+      setList('installSteps', [
+        T('Click the install icon on the right side of the address bar, or open the ⋮ menu and choose to install the page as an app.',
+          'Klikk installeringsikonet til høyre i adressefeltet, eller åpne menyen ⋮ og velg å installere siden som app.'),
+        T('Confirm with Install. QuickCal opens in its own window.', 'Bekreft med Installer. QuickCal åpnes i sitt eget vindu.'),
+        pin]);
+    } else {
+      setList('installSteps', [
+        T('Installing as an app works best in Microsoft Edge or Google Chrome. Open this page in one of them.',
+          'Installering som app fungerer best i Microsoft Edge eller Google Chrome. Åpne denne siden i en av dem.')]);
+    }
+    $('installTip').textContent = T(
+      'The week number is shown on the icon while QuickCal is open, so minimize the window instead of closing it, or turn on automatic start.',
+      'Ukenummeret vises på ikonet så lenge QuickCal er åpen. Minimer derfor vinduet i stedet for å lukke det, eller slå på automatisk start.');
+    updateInstallButtons();
+
+    // Autostart page
+    $('autostartTitle').textContent = T('Start QuickCal when you sign in', 'Start QuickCal automatisk når du logger på');
+    $('autostartIntro').textContent = T(
+      'Then the week number on the taskbar is always up to date. QuickCal must be installed as an app first.',
+      'Da er ukenummeret på oppgavelinjen alltid oppdatert. QuickCal må være installert som app først.');
+    if (b === 'chrome') {
+      setList('autostartSteps', [
+        T('Open the QuickCal app.', 'Åpne QuickCal-appen.'),
+        T('Click ⋮ at the top right of the QuickCal window and choose App info, then Settings.',
+          'Klikk ⋮ øverst til høyre i QuickCal-vinduet og velg App-info og deretter Innstillinger.'),
+        T('Turn on “Start app when you sign in”.', 'Slå på «Start appen når du logger på» (Start app when you sign in).')]);
+    } else {
+      setList('autostartSteps', [
+        T('Open the QuickCal app.', 'Åpne QuickCal-appen.'),
+        T('Click … at the top right of the QuickCal window and choose App settings.',
+          'Klikk … øverst til høyre i QuickCal-vinduet og velg App-innstillinger (App settings).'),
+        T('Turn on “Auto-start on device login”.', 'Slå på automatisk start ved pålogging (Auto-start on device login).')]);
+    }
+    $('autostartTip').textContent = T(
+      'The menu names may differ slightly between browser versions and languages.',
+      'Navnene i menyene kan variere litt mellom nettleserversjoner og språk.');
+  }
+
+  function applyTexts() {
+    document.documentElement.lang = norwegian() ? 'no' : 'en';
+    $('infoText').textContent = T('Spacebar or minimize app to reset date', 'Mellomrom eller minimer appen for å gå til i dag');
+    $('yearInfoText').textContent = T('Spacebar to go to the current year', 'Mellomrom for å gå til inneværende år');
+    Array.prototype.forEach.call(document.querySelectorAll('.t-settings'), function (s) { s.textContent = T('Settings', 'Innstillinger'); });
+    // Shrink the bottom-row texts if they are too long for their column (like the Viewbox in the Windows app)
+    var colWidth = (600 - 16) / 3;
+    [$('infoText'), $('yearInfoText')].forEach(function (e) {
+      e.style.fontSize = Math.min(10.5, fitSize(e.textContent, colWidth - 10, 18)) + 'px';
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('.tagline'), function (e) {
+      e.style.fontSize = Math.min(12.5, fitSize(e.textContent, colWidth - 6, 18)) + 'px';
+    });
+
+    $('settingsTitle').textContent = T('Settings', 'Innstillinger');
+    $('welcomeBtn').textContent = T('Getting started', 'Kom i gang');
+    $('languageLabel').textContent = T('Calendar Language', 'Kalenderspråk');
+    $('systemLanguageOption').textContent = T('Use system language', 'Bruk systemspråk');
+    $('holidaysLabel').textContent = T('Show holidays in calendar', 'Vis helligdager i kalenderen');
+    $('easterLabel').textContent = T('Show Easter as a full week off', 'Vis hele påskeuka som fri');
+    $('weeksBefore').textContent = T('Show', 'Vis');
+    $('weeksAfter').textContent = T('number of weeks summer vacation (0-3)', 'uker sommerferie (0–3)');
+    $('installPageBtn').textContent = T('Install as app', 'Installer som app');
+    $('autostartPageBtn').textContent = T('Start automatically', 'Start automatisk');
+
+    $('welcomeTitle').textContent = T('Getting started with QuickCal', 'Kom i gang med QuickCal');
+    $('wInstallText').textContent = T('Install QuickCal as an app', 'Installer QuickCal som app');
+    $('wBadgeText').innerHTML = '';
+    $('wBadgeText').appendChild(document.createTextNode(T('Week number on the taskbar', 'Ukenummeret på oppgavelinjen')));
+    $('wBadgeText').appendChild(document.createElement('br'));
+    $('wBadgeText').appendChild(el('small', '', T(
+      'When QuickCal is installed and open (minimized is fine), the week number is shown on its icon. Right-click the icon and choose “Pin to taskbar”.',
+      'Når QuickCal er installert og åpen (gjerne minimert), vises ukenummeret på ikonet. Høyreklikk ikonet og velg «Fest til oppgavelinjen».')));
+    $('wAutostartText').textContent = T('Start automatically when you sign in', 'Start automatisk når du logger på');
+    $('wAutostartBtn').textContent = T('Show me how', 'Vis meg hvordan');
+    $('wTip').textContent = T(
+      'Tip: the arrows, the month name and the year at the top are clickable. ← → change month, ↑ ↓ change year, and Spacebar goes to today. Maximize the window to see the whole year.',
+      'Tips: Pilene, månedsnavnet og årstallet øverst er klikkbare. ← → bytter måned, ↑ ↓ bytter år, og mellomrom går til i dag. Maksimer vinduet for å se hele året.');
+    updateInstallButtons();
+    fillHelpPages();
+  }
+
+  // =====================================================================================
+  // Start
+  // =====================================================================================
+
+  if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+    navigator.serviceWorker.register('sw.js').catch(function () { /* offline support is optional */ });
+  }
+
+  // First start of the installed app: give the window the same size as the Windows version
+  if (isInstalled() && !settings.sizedOnce && !isMaximized()) {
+    try {
+      window.resizeTo(600 + (window.outerWidth - window.innerWidth), 220 + (window.outerHeight - window.innerHeight));
+    } catch (e) { /* not allowed in this browser */ }
+    settings.sizedOnce = true;
+    saveSettings();
+  }
+
+  applyTexts();
+  updateBadge(true);
+  resetToToday();
+
+  if (!settings.welcomeShown) {
+    showWelcome();
+    settings.welcomeShown = true;
+    saveSettings();
+  }
+})();

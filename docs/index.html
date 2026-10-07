@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="no">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>QuickCal</title>
+  <meta name="description" content="Quick ISO week calendar with Norwegian holidays and vacations">
+  <meta name="theme-color" content="#143275">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" type="image/png" href="icons/favicon.png">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="stage">
+    <div id="scaler">
+
+      <!-- ===================== 3-MONTH VIEW ===================== -->
+      <section id="monthView" class="page" data-w="600" data-h="220">
+        <div class="months3">
+          <div class="month" id="m1"></div>
+          <div class="month" id="m2"></div>
+          <div class="month" id="m3"></div>
+        </div>
+        <div class="bottomRow three">
+          <div class="fitLeft"><span id="infoText" class="smallInfo"></span></div>
+          <div class="right"><button class="linkBox" id="settingsBtn1"><span class="t-settings"></span> <svg class="gear" viewBox="0 0 24 24"><path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Zm9 4.6v-2.2l-2.3-.5a7 7 0 0 0-.7-1.6l1.3-2-1.6-1.6-2 1.3a7 7 0 0 0-1.6-.7L13.6 3h-2.2l-.5 2.3a7 7 0 0 0-1.6.7l-2-1.3-1.6 1.6 1.3 2a7 7 0 0 0-.7 1.6L4 10.4v2.2l2.3.5c.2.6.4 1.1.7 1.6l-1.3 2 1.6 1.6 2-1.3c.5.3 1 .5 1.6.7l.5 2.3h2.2l.5-2.3c.6-.2 1.1-.4 1.6-.7l2 1.3 1.6-1.6-1.3-2c.3-.5.5-1 .7-1.6l2.3-.5Z" fill="none" stroke="currentColor" stroke-width="1.4"/></svg></button></div>
+          <div class="tagline">QuickCal v2.0 - Magnus Petersen</div>
+        </div>
+      </section>
+
+      <!-- ===================== YEAR VIEW (maximized window) ===================== -->
+      <section id="yearView" class="page hidden" data-w="1024" data-h="680">
+        <div class="yearBar">
+          <button class="navBtn" id="yearBack" aria-label="Previous year"><svg viewBox="0 0 24 24"><path d="M20 12H5m6-7-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.4"/></svg></button>
+          <div id="yearTitle">2026</div>
+          <button class="navBtn" id="yearForward" aria-label="Next year"><svg viewBox="0 0 24 24"><path d="M4 12h15m-6-7 7 7-7 7" fill="none" stroke="currentColor" stroke-width="2.4"/></svg></button>
+        </div>
+        <div class="yearGrid" id="yearGrid"></div>
+        <div class="bottomRow three">
+          <div class="fitLeft"><span id="yearInfoText" class="smallInfo"></span></div>
+          <div class="right"><button class="linkBox" id="settingsBtn2"><span class="t-settings"></span> <svg class="gear" viewBox="0 0 24 24"><path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Zm9 4.6v-2.2l-2.3-.5a7 7 0 0 0-.7-1.6l1.3-2-1.6-1.6-2 1.3a7 7 0 0 0-1.6-.7L13.6 3h-2.2l-.5 2.3a7 7 0 0 0-1.6.7l-2-1.3-1.6 1.6 1.3 2a7 7 0 0 0-.7 1.6L4 10.4v2.2l2.3.5c.2.6.4 1.1.7 1.6l-1.3 2 1.6 1.6 2-1.3c.5.3 1 .5 1.6.7l.5 2.3h2.2l.5-2.3c.6-.2 1.1-.4 1.6-.7l2 1.3 1.6-1.6-1.3-2c.3-.5.5-1 .7-1.6l2.3-.5Z" fill="none" stroke="currentColor" stroke-width="1.4"/></svg></button></div>
+          <div class="tagline">QuickCal v2.0 - Magnus Petersen</div>
+        </div>
+      </section>
+
+      <!-- ===================== SETTINGS ===================== -->
+      <section id="settingsPage" class="page hidden textPage" data-w="600" data-h="220">
+        <h1 id="settingsTitle"></h1>
+        <button class="btn topRight" id="welcomeBtn"></button>
+        <div class="setRow">
+          <label id="languageLabel" for="languageSelect"></label>
+          <select id="languageSelect">
+            <option value="English">English</option>
+            <option value="Norwegian">Norsk</option>
+            <option value="UseSystemLanguage" id="systemLanguageOption"></option>
+          </select>
+        </div>
+        <div class="setRow"><span id="holidaysLabel"></span><button class="check" id="holidaysCheck"></button></div>
+        <div class="setRow dependsOnHolidays"><span id="easterLabel"></span><button class="check" id="easterCheck"></button></div>
+        <div class="setRow dependsOnHolidays">
+          <span id="weeksBefore"></span>
+          <input id="weeksInput" type="text" inputmode="numeric" maxlength="1">
+          <span id="weeksAfter"></span>
+        </div>
+        <button class="btn back" id="settingsBack" aria-label="Back"><svg viewBox="0 0 24 24"><path d="M20 12H5m6-7-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.2"/></svg></button>
+        <div class="stackBottomRight">
+          <button class="btn" id="installPageBtn"></button>
+          <button class="btn" id="autostartPageBtn"></button>
+        </div>
+      </section>
+
+      <!-- ===================== INSTALL AS APP ===================== -->
+      <section id="installPage" class="page hidden textPage" data-w="600" data-h="220">
+        <h1 id="installTitle"></h1>
+        <p id="installIntro"></p>
+        <ol id="installSteps"></ol>
+        <button class="btn inline" id="installNowBtn"></button>
+        <p class="tip" id="installTip"></p>
+        <button class="btn back subBack" aria-label="Back"><svg viewBox="0 0 24 24"><path d="M20 12H5m6-7-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.2"/></svg></button>
+      </section>
+
+      <!-- ===================== AUTOSTART ===================== -->
+      <section id="autostartPage" class="page hidden textPage" data-w="600" data-h="220">
+        <h1 id="autostartTitle"></h1>
+        <p id="autostartIntro"></p>
+        <ol id="autostartSteps"></ol>
+        <p class="tip" id="autostartTip"></p>
+        <button class="btn back subBack" aria-label="Back"><svg viewBox="0 0 24 24"><path d="M20 12H5m6-7-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.2"/></svg></button>
+      </section>
+
+      <!-- ===================== GETTING STARTED (first run) ===================== -->
+      <section id="welcomePage" class="page hidden textPage" data-w="600" data-h="220">
+        <h1 id="welcomeTitle"></h1>
+        <div class="wRow">
+          <svg class="wIcon" viewBox="0 0 24 24"><path d="M12 3v12m-5-5 5 5 5-5M4 20h16" fill="none" stroke="#143275" stroke-width="2"/></svg>
+          <span class="wText" id="wInstallText"></span>
+          <button class="btn wBtn" id="wInstallBtn"></button>
+        </div>
+        <div class="wRow">
+          <span class="miniWeek" id="wWeekIcon">41</span>
+          <span class="wText" id="wBadgeText"></span>
+        </div>
+        <div class="wRow">
+          <svg class="wIcon" viewBox="0 0 24 24"><path d="M12 3v9m-6.4-5.4a8 8 0 1 0 12.8 0" fill="none" stroke="#143275" stroke-width="2"/></svg>
+          <span class="wText" id="wAutostartText"></span>
+          <button class="btn wBtn" id="wAutostartBtn"></button>
+        </div>
+        <div class="wRow tipRow">
+          <svg class="wIcon" viewBox="0 0 24 24"><path d="M9 18h6m-5 3h4M12 3a6 6 0 0 0-3.5 10.9V16h7v-2.1A6 6 0 0 0 12 3Z" fill="none" stroke="#C08000" stroke-width="1.8"/></svg>
+          <span class="wTip" id="wTip"></span>
+        </div>
+        <button class="btn okBtn" id="welcomeOk">OK</button>
+      </section>
+
+    </div>
+  </div>
+
+  <div id="menu" class="menu hidden"></div>
+  <div id="tooltip" class="tooltip hidden"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
