@@ -1,0 +1,39 @@
+# Builds the portable QuickCal.exe on GitHub.
+# - When you publish a release on GitHub, QuickCal.exe is attached to it automatically.
+# - You can also start a build by hand (Actions -> Build QuickCal Portable -> Run workflow);
+#   the .exe is then available as a download on the run's summary page.
+name: Build QuickCal Portable
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Build single-file QuickCal.exe
+        run: dotnet publish portable/QuickCal.csproj -c Release -p:PublishProfile=Portable
+
+      - name: Keep the .exe as a download on this run
+        uses: actions/upload-artifact@v4
+        with:
+          name: QuickCal
+          path: portable/publish/QuickCal.exe
+
+      - name: Attach QuickCal.exe to the release
+        if: github.event_name == 'release'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${{ github.event.release.tag_name }}" portable/publish/QuickCal.exe --clobber
