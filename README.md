@@ -6,7 +6,7 @@ QuickCal comes in two versions:
 
 | | **QuickCal Portable** (Windows) | **QuickCal Web** (browser) |
 |---|---|---|
-| Get it | Download `QuickCal.exe` from [Releases](../../releases) | Open **https://dooniem.github.io/QuickCal/** |
+| Get it | Download `QuickCal.exe` from [Releases](../../releases) | Open **https://YOUR-USERNAME.github.io/quickcal/** |
 | Installation | None. One file, runs from any folder or USB stick | None. Works in a tab, and can be [installed as an app](#quickcal-web-browser) from Edge or Chrome |
 | Admin rights | Not needed | Not needed |
 | Week number always visible | Icon with the week number in the notification area, by the clock | Badge on the QuickCal taskbar icon (installed app) |
@@ -43,6 +43,8 @@ Requirements: Visual Studio 2026 with the **.NET desktop development** workload 
 1. Open `portable/QuickCal.csproj` in Visual Studio and press **F5** to build and run.
 2. To create the single portable file, double-click `portable/publish.cmd`, or right-click the project → **Publish** → profile **Portable**.
 3. The finished file is `portable/publish/QuickCal.exe`. It is self-contained and is the only file you need to distribute.
+
+Releases are built automatically by GitHub Actions ([`.github/workflows/release.yml`](.github/workflows/release.yml)): publishing a release on GitHub builds `QuickCal.exe` from the code in this repository and attaches it to the release.
 
 Command line alternative:
 
@@ -94,9 +96,11 @@ Norwegian step-by-step instructions you can forward to colleagues: [INSTALLASJON
 
 ```
 quickcal/
+├── .github/          GitHub Actions: builds QuickCal.exe for each release
 ├── portable/         QuickCal Portable: WPF / .NET 10 Visual Studio project
 ├── docs/             QuickCal Web: static site served by GitHub Pages
-└── INSTALLASJON.md   Install guide for the web app, in Norwegian
+├── INSTALLASJON.md   Install guide for the web app, in Norwegian
+└── LICENSE           MIT License
 ```
 
 ## History
@@ -112,3 +116,7 @@ QuickCal started as a UWP app on the Microsoft Store. Version 2.0 is a rewrite a
 ## Author
 
 Magnus Petersen
+
+## License
+
+QuickCal is free and open source under the [MIT License](LICENSE). You may use, copy, change and share it, as long as the copyright notice is kept.
