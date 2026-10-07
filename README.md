@@ -66,7 +66,7 @@ dotnet publish portable/QuickCal.csproj -c Release -p:PublishProfile=Portable
 
 ## QuickCal Web (browser)
 
-Open **https://YOUR-USERNAME.github.io/quickcal/** and the calendar works right away, as an ordinary web page in a tab.
+Open **https://dooniem.github.io/QuickCal/** and the calendar works right away, as an ordinary web page in a tab.
 
 Installing it as an app is optional, but worth it: QuickCal then gets its own window without browser toolbars, works offline, can be pinned to the taskbar, can start automatically when you sign in, and shows the current week number as a badge on its taskbar icon.
 
@@ -118,7 +118,7 @@ quickcal/
 
 ## History
 
-QuickCal started as a UWP app on the Microsoft Store. Version 2.0 is a rewrite as a portable WPF app (no installation, no admin rights) plus a web version, with these fixes over the Store version:
+QuickCal started as a UWP app on the [Microsoft Store](https://apps.microsoft.com/detail/9n2v3z21f5qv), where it is still available. More and more organizations block access to the Microsoft Store on their computers, so version 2.0 is a rewrite as a portable WPF app (no installation, no admin rights) plus a web version, with these fixes over the Store version:
 
 - Summer vacation was shown one week too early in some years (e.g. 2027 and 2028).
 - Week 53 had no week icon.
