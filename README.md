@@ -6,7 +6,7 @@ QuickCal comes in two versions:
 
 | | **QuickCal Portable** (Windows) | **QuickCal Web** (browser) |
 |---|---|---|
-| Get it | Download `QuickCal.exe` from [Releases](../../releases) | Open **https://dooniem.github.io/QuickCal/** |
+| Get it | Download `QuickCal.exe` from [Releases](../../releases) | Open **https://YOUR-USERNAME.github.io/quickcal/** |
 | Installation | None. One file, runs from any folder or USB stick | None. Works in a tab, and can be [installed as an app](#quickcal-web-browser) from Edge or Chrome |
 | Admin rights | Not needed | Not needed |
 | Week number always visible | Icon with the week number in the notification area, by the clock | Badge on the QuickCal taskbar icon (installed app) |
@@ -35,6 +35,18 @@ Closing the window with **X** hides it to the notification area, so the week num
 Settings are stored in `QuickCal.settings.json` next to `QuickCal.exe`. If that folder is read-only, `%AppData%\QuickCal` is used instead. Autostart uses the current user's `Run` registry key, so it needs no admin rights and can be turned off in Task Manager under *Startup apps*.
 
 > **Windows SmartScreen / Smart App Control:** `QuickCal.exe` is not code-signed, so Windows may warn you the first time you run it. Choose *More info → Run anyway*. On managed work PCs, your IT department's policies decide whether unsigned apps may run.
+
+### Uninstall
+
+QuickCal does not install anything. To remove it:
+
+1. If you turned on autostart, open **Settings** and click **Disable autostart** (or turn QuickCal off in Task Manager under *Startup apps*).
+2. Right-click the week icon by the clock and choose **Exit**.
+3. Delete `QuickCal.exe` and `QuickCal.settings.json` (and `%AppData%\QuickCal`, if it exists).
+
+### Privacy
+
+QuickCal Portable makes no network connections and collects no data. See the [code signing policy](CODE_SIGNING_POLICY.md).
 
 ### Build from source
 
@@ -99,6 +111,7 @@ quickcal/
 ├── .github/          GitHub Actions: builds QuickCal.exe for each release
 ├── portable/         QuickCal Portable: WPF / .NET 10 Visual Studio project
 ├── docs/             QuickCal Web: static site served by GitHub Pages
+├── CODE_SIGNING_POLICY.md  Code signing policy and privacy policy
 ├── INSTALLASJON.md   Install guide for the web app, in Norwegian
 └── LICENSE           MIT License
 ```
