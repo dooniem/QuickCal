@@ -15,7 +15,9 @@
     easterFullWeek: true,
     summerWeeks: 3,
     welcomeShown: false,
-    sizedOnce: false
+    appSize: null,          // last normal window size of the installed app {w, h} (inner size)
+    appMaximized: false,    // installed app was last left maximized
+    appAutostartShown: false
   };
 
   function loadSettings() {
@@ -463,9 +465,19 @@
 
   // ---------- Window behaviour ----------
   var wasMaximized = isMaximized();
+  var appSizeReady = false, saveSizeTimer = null;
   window.addEventListener('resize', function () {
     closePopups();
     var max = isMaximized();
+    // Installed app: remember the size, like the Windows version does
+    if (appSizeReady && isInstalled()) {
+      clearTimeout(saveSizeTimer);
+      saveSizeTimer = setTimeout(function () {
+        settings.appMaximized = isMaximized();
+        if (!settings.appMaximized) settings.appSize = { w: window.innerWidth, h: window.innerHeight };
+        saveSettings();
+      }, 400);
+    }
     if (max !== wasMaximized) {
       wasMaximized = max;
       // Maximize = whole year, back to normal = 3 months with the current month in the middle
@@ -530,17 +542,20 @@
   window.addEventListener('beforeinstallprompt', function (e) {
     e.preventDefault();
     installPrompt = e;
-    updateInstallButtons();
+    fillHelpPages();
   });
   window.addEventListener('appinstalled', function () {
     installPrompt = null;
-    updateInstallButtons();
+    fillHelpPages();
   });
 
   function runInstall() {
     if (!installPrompt) { openSubPage('installPage'); return; }
     installPrompt.prompt();
-    installPrompt.userChoice.then(function () { installPrompt = null; updateInstallButtons(); });
+    installPrompt.userChoice.then(function (choice) {
+      if (choice && choice.outcome === 'accepted') installPrompt = null;
+      fillHelpPages();
+    });
   }
 
   function updateInstallButtons() {
@@ -567,7 +582,9 @@
     showPage(id);
   }
   Array.prototype.forEach.call(document.querySelectorAll('.subBack'), function (b) {
-    b.addEventListener('click', function () { showPage(subPageReturn); });
+    b.addEventListener('click', function () {
+      if (subPageReturn === 'calendar') showCalendar(); else showPage(subPageReturn);
+    });
   });
 
   function setCheck(btn, on) { btn.classList.toggle('on', on); btn.textContent = on ? '🗹' : '☐'; btn.dataset.on = on ? '1' : ''; }
@@ -605,6 +622,13 @@
   $('installPageBtn').addEventListener('click', function () { openSubPage('installPage'); });
   $('autostartPageBtn').addEventListener('click', function () { openSubPage('autostartPage'); });
   $('installNowBtn').addEventListener('click', runInstall);
+  $('copyAppsBtn').addEventListener('click', function () {
+    var btn = this, url = browserKind() === 'chrome' ? 'chrome://apps' : 'edge://apps';
+    function done() { btn.textContent = T('Copied ✓ Now paste it in the address bar', 'Kopiert ✓ Lim den inn i adressefeltet'); }
+    try {
+      navigator.clipboard.writeText(url).then(done, function () { prompt(T('Copy this address:', 'Kopier denne adressen:'), url); });
+    } catch (e) { prompt(T('Copy this address:', 'Kopier denne adressen:'), url); }
+  });
 
   function showWelcome() {
     welcomeFromSettings = currentPage === 'settingsPage';
@@ -636,17 +660,21 @@
       'Høyreklikk QuickCal-ikonet på oppgavelinjen og velg «Fest til oppgavelinjen». Ukenummeret vises på ikonet.');
     if (isInstalled()) {
       setList('installSteps', [T('QuickCal is already installed. ✓', 'QuickCal er allerede installert. ✓'), pin]);
-    } else if (b === 'edge') {
+    } else if (installPrompt) {
+      // The browser offers installation: the button below is all that is needed
       setList('installSteps', [
-        T('Click the app icon in the address bar (“App available”), or open the … menu → Apps → Install this site as an app.',
-          'Klikk app-ikonet i adressefeltet («App tilgjengelig»), eller åpne menyen … → Apper → Installer dette nettstedet som en app.'),
-        T('Confirm with Install. QuickCal opens in its own window.', 'Bekreft med Installer. QuickCal åpnes i sitt eget vindu.'),
+        T('Click “Install QuickCal now” below and confirm with Install. QuickCal opens in its own window.',
+          'Klikk «Installer QuickCal nå» under og bekreft med Installer. QuickCal åpnes i sitt eget vindu.'),
         pin]);
-    } else if (b === 'chrome') {
+    } else if (b === 'edge' || b === 'chrome') {
       setList('installSteps', [
-        T('Click the install icon on the right side of the address bar, or open the ⋮ menu and choose to install the page as an app.',
-          'Klikk installeringsikonet til høyre i adressefeltet, eller åpne menyen ⋮ og velg å installere siden som app.'),
-        T('Confirm with Install. QuickCal opens in its own window.', 'Bekreft med Installer. QuickCal åpnes i sitt eget vindu.'),
+        T('Click the install icon (a small monitor with an arrow) at the right end of the address bar.',
+          'Klikk installeringsikonet (en liten skjerm med en pil) helt til høyre i adressefeltet.'),
+        b === 'edge'
+          ? T('No icon? Open the … menu → Apps → Install this site as an app.',
+              'Finnes det ikke? Åpne menyen … → Apper → Installer dette nettstedet som en app.')
+          : T('No icon? Open the ⋮ menu and look for “Install QuickCal…” (in some versions under Cast, save, and share).',
+              'Finnes det ikke? Åpne menyen ⋮ og se etter «Installer QuickCal …» (i noen versjoner under Kringkast, lagre og del).'),
         pin]);
     } else {
       setList('installSteps', [
@@ -660,21 +688,26 @@
 
     // Autostart page
     $('autostartTitle').textContent = T('Start QuickCal when you sign in', 'Start QuickCal automatisk når du logger på');
-    $('autostartIntro').textContent = T(
-      'Then the week number on the taskbar is always up to date. QuickCal must be installed as an app first.',
-      'Da er ukenummeret på oppgavelinjen alltid oppdatert. QuickCal må være installert som app først.');
+    $('autostartIntro').textContent = isInstalled()
+      ? T('Then the week number on the taskbar icon is always up to date, also after a restart. Browsers do not let a web page turn this on itself, but it only takes a moment:',
+          'Da er ukenummeret på oppgavelinjen alltid oppdatert, også etter omstart. Nettleseren lar ikke en nettside slå dette på selv, men det tar bare et øyeblikk:')
+      : T('Then the week number on the taskbar is always up to date. QuickCal must be installed as an app first.',
+          'Da er ukenummeret på oppgavelinjen alltid oppdatert. QuickCal må være installert som app først.');
+    var appsUrl = b === 'chrome' ? 'chrome://apps' : 'edge://apps';
+    $('copyAppsBtn').textContent = T('Copy ', 'Kopier ') + appsUrl;
+    $('copyAppsBtn').classList.toggle('hidden', b === 'other');
     if (b === 'chrome') {
       setList('autostartSteps', [
-        T('Open the QuickCal app.', 'Åpne QuickCal-appen.'),
-        T('Click ⋮ at the top right of the QuickCal window and choose App info, then Settings.',
-          'Klikk ⋮ øverst til høyre i QuickCal-vinduet og velg App-info og deretter Innstillinger.'),
-        T('Turn on “Start app when you sign in”.', 'Slå på «Start appen når du logger på» (Start app when you sign in).')]);
+        T('Click the button below, then paste (Ctrl+V) into the address bar of a Chrome window and press Enter.',
+          'Klikk knappen under, lim inn (Ctrl+V) i adressefeltet i et Chrome-vindu og trykk Enter.'),
+        T('Right-click QuickCal and tick “Start app when you sign in”.',
+          'Høyreklikk QuickCal og huk av for «Start appen når du logger på» (Start app when you sign in).')]);
     } else {
       setList('autostartSteps', [
-        T('Open the QuickCal app.', 'Åpne QuickCal-appen.'),
-        T('Click … at the top right of the QuickCal window and choose App settings.',
-          'Klikk … øverst til høyre i QuickCal-vinduet og velg App-innstillinger (App settings).'),
-        T('Turn on “Auto-start on device login”.', 'Slå på automatisk start ved pålogging (Auto-start on device login).')]);
+        T('Click the button below, then paste (Ctrl+V) into the address bar of an Edge window and press Enter.',
+          'Klikk knappen under, lim inn (Ctrl+V) i adressefeltet i et Edge-vindu og trykk Enter.'),
+        T('Click … next to QuickCal and turn on “Auto-start on device login”.',
+          'Klikk … ved QuickCal og slå på automatisk start ved pålogging (Auto-start on device login).')]);
     }
     $('autostartTip').textContent = T(
       'The menu names may differ slightly between browser versions and languages.',
@@ -731,13 +764,20 @@
     navigator.serviceWorker.register('sw.js').catch(function () { /* offline support is optional */ });
   }
 
-  // First start of the installed app: give the window the same size as the Windows version
-  if (isInstalled() && !settings.sizedOnce && !isMaximized()) {
+  // Installed app: open with the same size as the Windows version (600 × 220), or the size
+  // the user left it at. Browsers open new app windows very large, so this is done on every start.
+  function sizeAppWindow() {
+    if (!isInstalled() || settings.appMaximized) return;
+    var size = settings.appSize || { w: 600, h: 220 };
+    var w = Math.max(300, Math.min(size.w, screen.availWidth)), h = Math.max(110, Math.min(size.h, screen.availHeight));
     try {
-      window.resizeTo(600 + (window.outerWidth - window.innerWidth), 220 + (window.outerHeight - window.innerHeight));
+      window.resizeTo(w + (window.outerWidth - window.innerWidth), h + (window.outerHeight - window.innerHeight));
     } catch (e) { /* not allowed in this browser */ }
-    settings.sizedOnce = true;
-    saveSettings();
+  }
+  if (isInstalled()) {
+    sizeAppWindow();
+    // The browser may still be placing the new window; try once more, then start remembering the size
+    setTimeout(function () { sizeAppWindow(); setTimeout(function () { appSizeReady = true; }, 600); }, 250);
   }
 
   applyTexts();
@@ -747,6 +787,15 @@
   if (!settings.welcomeShown) {
     showWelcome();
     settings.welcomeShown = true;
+    saveSettings();
+  } else if (isInstalled() && !settings.appAutostartShown) {
+    // First start as an installed app: help the user turn on automatic start
+    fillHelpPages();
+    subPageReturn = 'calendar';
+    showPage('autostartPage');
+  }
+  if (isInstalled() && !settings.appAutostartShown) {
+    settings.appAutostartShown = true;
     saveSettings();
   }
 })();
