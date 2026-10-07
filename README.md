@@ -6,8 +6,8 @@ QuickCal comes in two versions:
 
 | | **QuickCal Portable** (Windows) | **QuickCal Web** (browser) |
 |---|---|---|
-| Get it | Download `QuickCal.exe` from [Releases](../../releases) | Open **https://dooniem.github.io/QuickCal/** |
-| Installation | None. One file, runs from any folder or USB stick | None. Optionally install as an app from Edge or Chrome |
+| Get it | Download `QuickCal.exe` from [Releases](../../releases) | Open **https://YOUR-USERNAME.github.io/quickcal/** |
+| Installation | None. One file, runs from any folder or USB stick | None. Works in a tab, and can be [installed as an app](#quickcal-web-browser) from Edge or Chrome |
 | Admin rights | Not needed | Not needed |
 | Week number always visible | Icon with the week number in the notification area, by the clock | Badge on the QuickCal taskbar icon (installed app) |
 | Always on top | Yes (compact mode) | No (browsers don't allow it) |
@@ -52,18 +52,51 @@ dotnet publish portable/QuickCal.csproj -c Release -p:PublishProfile=Portable
 
 ## QuickCal Web (browser)
 
-The web version lives in the [`docs`](docs) folder and is published with GitHub Pages. It works offline once opened, and can be installed as an app from Microsoft Edge or Google Chrome by clicking the install icon in the address bar.
+Open **https://YOUR-USERNAME.github.io/quickcal/** and the calendar works right away, as an ordinary web page in a tab.
 
-To try it locally, open `docs/index.html` in a browser. Installing as an app and the taskbar badge only work when the page is served over HTTPS, for example from GitHub Pages.
+Installing it as an app is optional, but worth it: QuickCal then gets its own window without browser toolbars, works offline, can be pinned to the taskbar, can start automatically when you sign in, and shows the current week number as a badge on its taskbar icon.
 
-When you change the web files, bump `VERSION` at the top of `docs/sw.js` so users get the new version.
+### Install in Microsoft Edge
+
+1. Open the link in Edge.
+2. Look at the **right end of the address bar** for the install icon — a small monitor with an arrow, sometimes with the text *App available*. Click it, then click **Install**.
+3. No icon there? Open the **⋯** menu (top right, or `Alt`+`F`) → **Apps** → **Install this site as an app** → **Install**.
+4. QuickCal opens in its own window, and Edge offers to pin it. Say yes, or right-click the QuickCal icon on the taskbar and choose **Pin to taskbar**.
+5. To start it automatically: in the QuickCal window, click **⋯** (top right) → **App settings**, and turn on **Auto-start on device login**. The same settings page is at `edge://apps`.
+
+### Install in Google Chrome
+
+1. Open the link in Chrome.
+2. Look at the **right end of the address bar** for the install icon — a small monitor with a down arrow. Click it, then click **Install**.
+3. No icon there? Open the **⋮** menu (top right) and look for **Install QuickCal…**. In some Chrome versions it sits under **Cast, save, and share**.
+4. QuickCal opens in its own window. Right-click its taskbar icon and choose **Pin to taskbar**.
+5. To start it automatically: go to `chrome://apps`, right-click **QuickCal** and tick **Start app when you sign in**.
+
+The first time QuickCal opens as an installed app, it shows these autostart steps with a button that copies `chrome://apps` or `edge://apps` for you.
+
+The names of these menu items change between browser versions and languages. QuickCal also explains the steps inside the app, in English or Norwegian, on the **Getting started** page shown on the first visit and under **Settings → Install as app**.
+
+### If the install option is missing
+
+- The page must be opened over **https://**, as it is on GitHub Pages. Opening `index.html` as a local file shows the calendar, but cannot be installed.
+- Press `Ctrl`+`F5` once to reload the page fully, then look again.
+- Check `edge://apps` or `chrome://apps` — QuickCal may already be installed, in which case the install icon is gone by design.
+- Installing does not work in InPrivate / Incognito windows.
+- On a managed work PC, the IT department can block installation of web apps by policy. Edge then shows nothing in the address bar and no **Apps** entry in the menu; `edge://policy` lists the policies in force. The calendar still works as a normal web page, only the taskbar badge and the separate window are lost.
+
+### Updating the web version
+
+The web files live in the [`docs`](docs) folder, which GitHub Pages serves. When you change them, bump `VERSION` at the top of [`docs/sw.js`](docs/sw.js) (for example to `quickcal-v2.0.1`). Visitors then get the new version the next time they open QuickCal.
+
+Norwegian step-by-step instructions you can forward to colleagues: [INSTALLASJON.md](INSTALLASJON.md).
 
 ## Repository layout
 
 ```
 quickcal/
-├── portable/   QuickCal Portable: WPF / .NET 10 Visual Studio project
-└── docs/       QuickCal Web: static site served by GitHub Pages
+├── portable/         QuickCal Portable: WPF / .NET 10 Visual Studio project
+├── docs/             QuickCal Web: static site served by GitHub Pages
+└── INSTALLASJON.md   Install guide for the web app, in Norwegian
 ```
 
 ## History
