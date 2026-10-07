@@ -6,7 +6,7 @@ QuickCal comes in two versions:
 
 | | **QuickCal Portable** (Windows) | **QuickCal Web** (browser) |
 |---|---|---|
-| Get it | Download `QuickCal.exe` from [Releases](../../releases) | Open **https://dooniem.github.io/quickcal/** |
+| Get it | Download `QuickCal.exe` from [Releases](../../releases) | Open **https://dooniem.github.io/QuickCal/** |
 | Installation | None. One file, runs from any folder or USB stick | None. Optionally install as an app from Edge or Chrome |
 | Admin rights | Not needed | Not needed |
 | Week number always visible | Icon with the week number in the notification area, by the clock | Badge on the QuickCal taskbar icon (installed app) |
