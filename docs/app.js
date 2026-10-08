@@ -570,6 +570,7 @@
     }
     now.classList.toggle('hidden', !installPrompt || installed);
     $('resetSizeBtn').classList.toggle('hidden', !installed);
+    $('installPageBtn').textContent = installed ? T('Uninstall', 'Avinstaller') : T('Install as app', 'Installer som app');
     now.textContent = T('Install QuickCal now', 'Installer QuickCal nå');
   }
 
@@ -652,39 +653,55 @@
   function fillHelpPages() {
     var b = browserKind();
 
-    // Install page
-    $('installTitle').textContent = T('Install QuickCal as an app', 'Installer QuickCal som app');
-    $('installIntro').textContent = T(
-      'As an app, QuickCal gets its own window, works offline and shows the week number on its taskbar icon.',
-      'Som app får QuickCal sitt eget vindu, virker uten nett og viser ukenummeret på ikonet på oppgavelinjen.');
+    // Install page (becomes the uninstall page when QuickCal runs as an installed app)
     var pin = T('Right-click the QuickCal icon on the taskbar and choose “Pin to taskbar”. The week number is shown on the icon.',
       'Høyreklikk QuickCal-ikonet på oppgavelinjen og velg «Fest til oppgavelinjen». Ukenummeret vises på ikonet.');
     if (isInstalled()) {
-      setList('installSteps', [T('QuickCal is already installed. ✓', 'QuickCal er allerede installert. ✓'), pin]);
-    } else if (installPrompt) {
-      // The browser offers installation: the button below is all that is needed
+      $('installTitle').textContent = T('Uninstall QuickCal', 'Avinstaller QuickCal');
+      $('installIntro').textContent = T(
+        'A web page cannot uninstall itself, but it only takes a moment:',
+        'En nettside kan ikke avinstallere seg selv, men det tar bare et øyeblikk:');
       setList('installSteps', [
-        T('Click “Install QuickCal now” below and confirm with Install. QuickCal opens in its own window.',
-          'Klikk «Installer QuickCal nå» under og bekreft med Installer. QuickCal åpnes i sitt eget vindu.'),
-        pin]);
-    } else if (b === 'edge' || b === 'chrome') {
-      setList('installSteps', [
-        T('Click the install icon (a small monitor with an arrow) at the right end of the address bar.',
-          'Klikk installeringsikonet (en liten skjerm med en pil) helt til høyre i adressefeltet.'),
-        b === 'edge'
-          ? T('No icon? Open the … menu → Apps → Install this site as an app.',
-              'Finnes det ikke? Åpne menyen … → Apper → Installer dette nettstedet som en app.')
-          : T('No icon? Open the ⋮ menu and look for “Install QuickCal…” (in some versions under Cast, save, and share).',
-              'Finnes det ikke? Åpne menyen ⋮ og se etter «Installer QuickCal …» (i noen versjoner under Kringkast, lagre og del).'),
-        pin]);
+        T('Open the Windows Start menu, find QuickCal, right-click it and choose Uninstall.',
+          'Åpne Start-menyen i Windows, finn QuickCal, høyreklikk og velg Avinstaller.'),
+        b === 'chrome'
+          ? T('Or: go to chrome://apps, right-click QuickCal and choose Uninstall (Remove from Chrome).',
+              'Eller: gå til chrome://apps, høyreklikk QuickCal og velg Avinstaller (Fjern fra Chrome).')
+          : T('Or: go to edge://apps, click … next to QuickCal and choose Uninstall.',
+              'Eller: gå til edge://apps, klikk … ved QuickCal og velg Avinstaller.')]);
+      $('installTip').textContent = T(
+        'You can install QuickCal again at any time from the same web address.',
+        'Du kan installere QuickCal igjen når som helst fra den samme nettadressen.');
     } else {
-      setList('installSteps', [
-        T('Installing as an app works best in Microsoft Edge or Google Chrome. Open this page in one of them.',
-          'Installering som app fungerer best i Microsoft Edge eller Google Chrome. Åpne denne siden i en av dem.')]);
+      $('installTitle').textContent = T('Install QuickCal as an app', 'Installer QuickCal som app');
+      $('installIntro').textContent = T(
+        'As an app, QuickCal gets its own window, works offline and shows the week number on its taskbar icon.',
+        'Som app får QuickCal sitt eget vindu, virker uten nett og viser ukenummeret på ikonet på oppgavelinjen.');
+      if (installPrompt) {
+        // The browser offers installation: the button below is all that is needed
+        setList('installSteps', [
+          T('Click “Install QuickCal now” below and confirm with Install. QuickCal opens in its own window.',
+            'Klikk «Installer QuickCal nå» under og bekreft med Installer. QuickCal åpnes i sitt eget vindu.'),
+          pin]);
+      } else if (b === 'edge' || b === 'chrome') {
+        setList('installSteps', [
+          T('Click the install icon (a small monitor with an arrow) at the right end of the address bar.',
+            'Klikk installeringsikonet (en liten skjerm med en pil) helt til høyre i adressefeltet.'),
+          b === 'edge'
+            ? T('No icon? Open the … menu → Apps → Install this site as an app.',
+                'Finnes det ikke? Åpne menyen … → Apper → Installer dette nettstedet som en app.')
+            : T('No icon? Open the ⋮ menu and look for “Install QuickCal…” (in some versions under Cast, save, and share).',
+                'Finnes det ikke? Åpne menyen ⋮ og se etter «Installer QuickCal …» (i noen versjoner under Kringkast, lagre og del).'),
+          pin]);
+      } else {
+        setList('installSteps', [
+          T('Installing as an app works best in Microsoft Edge or Google Chrome. Open this page in one of them.',
+            'Installering som app fungerer best i Microsoft Edge eller Google Chrome. Åpne denne siden i en av dem.')]);
+      }
+      $('installTip').textContent = T(
+        'The week number is shown on the icon while QuickCal is open, so minimize the window instead of closing it, or turn on automatic start.',
+        'Ukenummeret vises på ikonet så lenge QuickCal er åpen. Minimer derfor vinduet i stedet for å lukke det, eller slå på automatisk start.');
     }
-    $('installTip').textContent = T(
-      'The week number is shown on the icon while QuickCal is open, so minimize the window instead of closing it, or turn on automatic start.',
-      'Ukenummeret vises på ikonet så lenge QuickCal er åpen. Minimer derfor vinduet i stedet for å lukke det, eller slå på automatisk start.');
     updateInstallButtons();
 
     // Autostart page
@@ -737,7 +754,6 @@
     $('easterLabel').textContent = T('Show Easter as a full week off', 'Vis hele påskeuka som fri');
     $('weeksBefore').textContent = T('Show', 'Vis');
     $('weeksAfter').textContent = T('number of weeks summer vacation (0-3)', 'uker sommerferie (0–3)');
-    $('installPageBtn').textContent = T('Install as app', 'Installer som app');
     $('autostartPageBtn').textContent = T('Start automatically', 'Start automatisk');
     $('resetSizeBtn').textContent = T('Default window size', 'Standard vindusstørrelse');
 

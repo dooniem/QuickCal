@@ -4,7 +4,9 @@ QuickCal fungerer med en gang i nettleseren. Vil du ha den som egen app, med ege
 
 Adresse: **https://dooniem.github.io/QuickCal/**
 
-## Microsoft Edge
+**Vi anbefaler Microsoft Edge.** Den finnes allerede på alle Windows-PC-er, og appen får et ryddig vindu. Chrome legger inn en stor **Avinstaller**-knapp i tittellinjen som ikke kan skjules.
+
+## Microsoft Edge (anbefalt)
 
 1. Åpne lenken i Edge.
 2. Se helt til høyre i adressefeltet. Der ligger et lite ikon som ser ut som en skjerm med en pil, av og til med teksten *App tilgjengelig*. Klikk på det, og klikk **Installer**.
@@ -27,6 +29,13 @@ Navnene på menyvalgene varierer litt mellom nettleserversjoner og språk. Quick
 ## Ukenummer på oppgavelinjen
 
 Når QuickCal er installert og åpen, vises ukenummeret som et lite merke på ikonet på oppgavelinjen. Minimer vinduet i stedet for å lukke det, så er merket alltid synlig. Med automatisk oppstart er det på plass hver gang du logger på.
+
+## Avinstallere
+
+Åpne **Innstillinger** i QuickCal og klikk **Avinstaller**, så får du stegene for din nettleser:
+
+- Åpne **Start**-menyen i Windows, finn **QuickCal**, høyreklikk og velg **Avinstaller**. Dette virker både for Edge og Chrome.
+- Eller i Edge: gå til `edge://apps`, klikk **⋯** ved QuickCal og velg **Avinstaller**. I Chrome: gå til `chrome://apps`, høyreklikk QuickCal og velg **Avinstaller** (eller bruk knappen i tittellinjen).
 
 ## Hvis du ikke finner installeringsvalget
 

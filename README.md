@@ -70,7 +70,9 @@ Open **https://dooniem.github.io/QuickCal/** and the calendar works right away, 
 
 Installing it as an app is optional, but worth it: QuickCal then gets its own window without browser toolbars, works offline, can be pinned to the taskbar, can start automatically when you sign in, and shows the current week number as a badge on its taskbar icon.
 
-### Install in Microsoft Edge
+**We recommend Microsoft Edge.** It is already on every Windows PC, and the installed app gets a clean window. Chrome adds a large **Uninstall** button to the title bar of installed apps that cannot be hidden.
+
+### Install in Microsoft Edge (recommended)
 
 1. Open the link in Edge.
 2. Look at the **right end of the address bar** for the install icon — a small monitor with an arrow, sometimes with the text *App available*. Click it, then click **Install**.
@@ -89,6 +91,13 @@ Installing it as an app is optional, but worth it: QuickCal then gets its own wi
 The first time QuickCal opens as an installed app, it shows these autostart steps with a button that copies `chrome://apps` or `edge://apps` for you.
 
 The names of these menu items change between browser versions and languages. QuickCal also explains the steps inside the app, in English or Norwegian, on the **Getting started** page shown on the first visit and under **Settings → Install as app**.
+
+### Uninstall the web app
+
+Open **Settings** in QuickCal and click **Uninstall**. It shows the steps for your browser:
+
+- Open the Windows **Start** menu, find **QuickCal**, right-click it and choose **Uninstall**. This works for both Edge and Chrome.
+- Or, in Edge: go to `edge://apps`, click **⋯** next to QuickCal and choose **Uninstall**. In Chrome: go to `chrome://apps`, right-click QuickCal and choose **Uninstall** (or use the Uninstall button in the app's title bar).
 
 ### If the install option is missing
 
