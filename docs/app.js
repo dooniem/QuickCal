@@ -569,6 +569,7 @@
       w.textContent = installPrompt ? T('Install', 'Installer') : T('Show me how', 'Vis meg hvordan');
     }
     now.classList.toggle('hidden', !installPrompt || installed);
+    $('resetSizeBtn').classList.toggle('hidden', !installed);
     now.textContent = T('Install QuickCal now', 'Installer QuickCal nå');
   }
 
@@ -738,6 +739,7 @@
     $('weeksAfter').textContent = T('number of weeks summer vacation (0-3)', 'uker sommerferie (0–3)');
     $('installPageBtn').textContent = T('Install as app', 'Installer som app');
     $('autostartPageBtn').textContent = T('Start automatically', 'Start automatisk');
+    $('resetSizeBtn').textContent = T('Default window size', 'Standard vindusstørrelse');
 
     $('welcomeTitle').textContent = T('Getting started with QuickCal', 'Kom i gang med QuickCal');
     $('wInstallText').textContent = T('Install QuickCal as an app', 'Installer QuickCal som app');
@@ -766,18 +768,44 @@
 
   // Installed app: open with the same size as the Windows version (600 × 220), or the size
   // the user left it at. Browsers open new app windows very large, so this is done on every start.
-  function sizeAppWindow() {
-    if (!isInstalled() || settings.appMaximized) return;
-    var size = settings.appSize || { w: 600, h: 220 };
+  var DEFAULT_APP_SIZE = { w: 600, h: 220 };
+  function sizeAppWindow(size) {
+    if (!isInstalled()) return;
+    size = size || settings.appSize || DEFAULT_APP_SIZE;
     var w = Math.max(300, Math.min(size.w, screen.availWidth)), h = Math.max(110, Math.min(size.h, screen.availHeight));
     try {
       window.resizeTo(w + (window.outerWidth - window.innerWidth), h + (window.outerHeight - window.innerHeight));
     } catch (e) { /* not allowed in this browser */ }
   }
-  if (isInstalled()) {
-    sizeAppWindow();
-    // The browser may still be placing the new window; try once more, then start remembering the size
-    setTimeout(function () { sizeAppWindow(); setTimeout(function () { appSizeReady = true; }, 600); }, 250);
+  // The browser may still be placing the new window, so try a few times before remembering the size
+  function startAppSizing() {
+    appSizeReady = false;
+    if (settings.appMaximized) { appSizeReady = true; return; }
+    var tries = [0, 250, 800, 1600];
+    tries.forEach(function (ms, i) {
+      setTimeout(function () {
+        sizeAppWindow();
+        if (i === tries.length - 1) setTimeout(function () { appSizeReady = true; }, 600);
+      }, ms);
+    });
+  }
+  // "Default window size" button in Settings
+  function resetAppSize() {
+    settings.appSize = null;
+    settings.appMaximized = false;
+    saveSettings();
+    sizeAppWindow(DEFAULT_APP_SIZE);
+    setTimeout(function () { sizeAppWindow(DEFAULT_APP_SIZE); }, 300);
+  }
+  $('resetSizeBtn').addEventListener('click', resetAppSize);
+  if (isInstalled()) startAppSizing();
+  // Right after installing, the browser moves this page into the new app window without
+  // reloading it, so size the window when the display mode switches to app mode.
+  if (window.matchMedia) {
+    var appMode = matchMedia('(display-mode: standalone)');
+    var onModeChange = function () { if (isInstalled()) { settings.appMaximized = false; startAppSizing(); } updateInstallButtons(); };
+    if (appMode.addEventListener) appMode.addEventListener('change', onModeChange);
+    else if (appMode.addListener) appMode.addListener(onModeChange);
   }
 
   applyTexts();
