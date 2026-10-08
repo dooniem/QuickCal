@@ -111,6 +111,12 @@ namespace QuickCal
             notifyIcon.ShowBalloonTip(4000, "QuickCal", text, Forms.ToolTipIcon.Info);
         }
 
+        /// <summary>Takes the icon away from the notification area (used when QuickCal crashes and restarts).</summary>
+        public void HideIcon()
+        {
+            notifyIcon.Visible = false;
+        }
+
         public void Dispose()
         {
             Microsoft.Win32.SystemEvents.PowerModeChanged -= OnPowerModeChanged;
