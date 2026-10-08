@@ -14,7 +14,6 @@
     showHolidays: true,
     easterFullWeek: true,
     summerWeeks: 3,
-    welcomeShown: false,
     appSize: null,          // last normal window size of the installed app {w, h} (inner size)
     appMaximized: false,    // installed app was last left maximized
     appAutostartShown: false
@@ -828,17 +827,15 @@
   updateBadge(true);
   resetToToday();
 
-  if (!settings.welcomeShown) {
+  if (!isInstalled()) {
+    // In a browser tab: show the Getting started page on every visit, so it offers installation
     showWelcome();
-    settings.welcomeShown = true;
-    saveSettings();
-  } else if (isInstalled() && !settings.appAutostartShown) {
-    // First start as an installed app: help the user turn on automatic start
+  } else if (!settings.appAutostartShown) {
+    // Installed app: never the Getting started page on start (it would show after every reboot),
+    // only once the autostart help on the first start as an app
     fillHelpPages();
     subPageReturn = 'calendar';
     showPage('autostartPage');
-  }
-  if (isInstalled() && !settings.appAutostartShown) {
     settings.appAutostartShown = true;
     saveSettings();
   }
