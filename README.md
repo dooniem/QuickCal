@@ -1,10 +1,10 @@
 # QuickCal
 
-A quick ISO week calendar for Windows with Norwegian holidays and school vacations. QuickCal shows three months at a glance, the whole year when maximized, and keeps the current week number in view all day.
+A mini-sized ISO week calendar designed for making quick decisions related to dates.
 
-QuickCal is free, open source and needs no admin rights. It comes in two versions:
+QuickCal is free and open source. It comes in two versions:
 
-| | **QuickCal Web** | **QuickCal Portable** |
+| | **QuickCal Web** (any browser) | **QuickCal Portable** (Windows) |
 |---|---|---|
 | Get it | Open **https://dooniem.github.io/QuickCal/** | Download `QuickCal.exe` from [Releases](../../releases) |
 | Install | One click, as an app in Microsoft Edge or Google Chrome | Nothing to install. Runs from any folder or USB stick |
@@ -14,12 +14,10 @@ QuickCal is free, open source and needs no admin rights. It comes in two version
 
 ## Features
 
-- **ISO 8601 week numbers** on every row, including week 53.
-- **Three months** in the normal window, with the current month in the middle.
-- **The whole year** when the window is maximized. Change year with the arrows or the ← / → keys, and press Space to jump back to today.
-- **Norwegian holidays**: New Year's Day, Easter, Labour Day, Constitution Day (17 May), Ascension, Whitsun and Christmas, with names as tooltips. Easter can optionally be shown as a full week off.
-- **Summer vacation** of 1 to 3 weeks marked in the calendar.
-- **English or Norwegian**, or the language of Windows or the browser.
+- Week numbers on every row.
+- Three months at a glance, or the whole year when the window is maximized.
+- Public holidays and summer vacation marked in the calendar.
+- English or Norwegian.
 
 ## QuickCal Web
 
@@ -27,6 +25,8 @@ QuickCal is free, open source and needs no admin rights. It comes in two version
 2. The *Getting started* page opens. Click **Install** and confirm.
 3. QuickCal opens in its own window. Right-click its icon on the taskbar and choose **Pin to taskbar**.
 4. On the first start, QuickCal shows how to make it start automatically when you sign in.
+
+On an iPhone or iPad, open the link in Safari, tap **Share** and choose **Add to Home Screen**.
 
 Edge is recommended because it is already on every Windows PC and gives the app a clean window. Chrome adds a large *Uninstall* button to the app's title bar that cannot be hidden.
 
