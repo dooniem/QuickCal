@@ -340,17 +340,24 @@
     fitInfoTexts();
   }
 
-  // Shrink the bottom-left hint to fit its column. Measured on the shown page, and on phones with
+  // Shrink the bottom-left hint to fit its space. On the calendar page the hint may also use the free part
+  // of the middle column, left of the Settings button. Measured on the shown page, and on phones with
   // some room to spare: iPhone draws small text in the scaled page a little wider than it measures.
   function fitInfoTexts() {
     var spare = touchOnly() ? 0.9 : 1;
     [$('infoText'), $('yearInfoText')].forEach(function (e) {
-      var page = $(e.closest('.page').id), colWidth = (+page.dataset.w - 16) / 3;
-      var text = e.textContent + (e.querySelector('.spaceKey') ? '\u2003\u2003\u2003\u2002' : '');   // room for the key
-      var size = Math.min(10.5, fitSize(text, colWidth - 10, 18) * spare);
+      var box = e.parentElement, page = $(e.closest('.page').id), colWidth = (+page.dataset.w - 16) / 3;
+      var width = colWidth;
+      if (box.classList.contains('wide')) {
+        var button = box.parentElement.querySelector('.linkBox');
+        width = colWidth * 2 + 8 - ((button && button.offsetWidth) || 75) - 6;
+      }
+      var keys = e.querySelectorAll('.spaceKey').length * 3 + e.querySelectorAll('.arrowKey').length * 1.4;
+      var text = e.textContent + new Array(Math.ceil(keys) + 1).join('\u2003');   // room for the keys
+      var size = Math.min(10.5, fitSize(text, width - 10, 18) * spare);
       e.style.fontSize = size + 'px';
       if (!e.offsetParent) return;
-      var avail = e.parentElement.clientWidth * spare, w = e.offsetWidth;
+      var avail = width * spare, w = e.offsetWidth;
       if (w > avail) e.style.fontSize = size * avail / w + 'px';
     });
   }
@@ -816,11 +823,20 @@
     else if (q.addListener) q.addListener(function () { applyTexts(); });
   });
 
-  // Bottom-left hint with a small spacebar key in front of the text
-  function setKeyHint(e, text) {
+  // Bottom-left hint with drawn keys: [←][→] leftRight [↑][↓] upDown [space] space.
+  // upDown == null leaves out the [↑][↓] part (year view).
+  function setKeyHint(e, leftRight, upDown, space) {
     e.textContent = '';
+    e.appendChild(el('span', 'arrowKey', '\u2190'));
+    e.appendChild(el('span', 'arrowKey', '\u2192'));
+    e.appendChild(document.createTextNode(leftRight));
+    if (upDown != null) {
+      e.appendChild(el('span', 'arrowKey', '\u2191'));
+      e.appendChild(el('span', 'arrowKey', '\u2193'));
+      e.appendChild(document.createTextNode(upDown));
+    }
     e.appendChild(el('span', 'spaceKey'));
-    e.appendChild(document.createTextNode(text));
+    e.appendChild(document.createTextNode(space));
   }
 
   function applyTexts() {
@@ -833,10 +849,10 @@
       $('yearInfoText').textContent = T('Swipe ← → to change year, ↓ for this year', 'Sveip ← → for å bytte år, ↓ for i år');
     } else {
       // Minimizing only resets the date in the installed app (see visibilitychange), not in a browser tab
-      setKeyHint($('infoText'), isInstalled()
-        ? T('Spacebar or minimize app to reset date', 'Mellomrom eller minimer appen for å gå til i dag')
-        : T('Spacebar to go to today', 'Mellomrom for å gå til i dag'));
-      setKeyHint($('yearInfoText'), T('Spacebar to go to the current year', 'Mellomrom for å gå til inneværende år'));
+      setKeyHint($('infoText'), T(' month · ', ' måned · '), T(' year · ', ' år · '), isInstalled()
+        ? T(' / minimize: today', ' / minimer: i dag')
+        : T(' today', ' i dag'));
+      setKeyHint($('yearInfoText'), T(' change year · ', ' bytt år · '), null, T(' this year', ' nåværende år'));
     }
     Array.prototype.forEach.call(document.querySelectorAll('.t-settings'), function (s) { s.textContent = T('Settings', 'Innstillinger'); });
     // Shrink the bottom-row texts if they are too long for their column (like the Viewbox in the Windows app)

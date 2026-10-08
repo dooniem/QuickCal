@@ -809,15 +809,66 @@ namespace QuickCal
 
         private string T(string english, string norwegian) => settingsManager.UseNorwegianTexts ? norwegian : english;
 
+        /// <summary>
+        /// Fills a hint panel with drawn keys: [←][→] leftRight [↑][↓] upDown [␣] space.
+        /// upDown == null leaves out the [↑][↓] part (year view).
+        /// </summary>
+        private static void SetKeyHint(Panel panel, string leftRight, string upDown, string space)
+        {
+            panel.Children.Clear();
+            panel.Children.Add(CreateKeyCap("\u2190"));
+            panel.Children.Add(CreateKeyCap("\u2192"));
+            panel.Children.Add(CreateHintText(leftRight));
+            if (upDown != null)
+            {
+                panel.Children.Add(CreateKeyCap("\u2191"));
+                panel.Children.Add(CreateKeyCap("\u2193"));
+                panel.Children.Add(CreateHintText(upDown));
+            }
+            panel.Children.Add(CreateKeyCap(null));
+            panel.Children.Add(CreateHintText(space));
+        }
+
+        private const double HintFontSize = 12;
+
+        private static TextBlock CreateHintText(string text) => new TextBlock
+        {
+            Text = text,
+            FontSize = HintFontSize,
+            Foreground = Brushes.Black,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+
+        /// <summary>A small keyboard key; arrow keys show the arrow, the spacebar (symbol == null) is a wide empty key.</summary>
+        private static Border CreateKeyCap(string symbol) => new Border
+        {
+            Width = symbol == null ? HintFontSize * 2.6 : HintFontSize * 1.25,
+            Height = HintFontSize * 1.2,
+            Margin = new Thickness(0, 0, 2, 0),
+            BorderBrush = new SolidColorBrush(Color.FromArgb(0xFF, 0x55, 0x55, 0x55)),
+            BorderThickness = new Thickness(1, 1, 1, 2),
+            CornerRadius = new CornerRadius(3),
+            Background = new SolidColorBrush(Color.FromArgb(0xFF, 0xF4, 0xF4, 0xF4)),
+            VerticalAlignment = VerticalAlignment.Center,
+            Child = symbol == null ? null : new TextBlock
+            {
+                Text = symbol,
+                FontSize = HintFontSize * 0.8,
+                Foreground = Brushes.Black,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center
+            }
+        };
+
         private void ApplyUiTexts()
         {
             // Calendar page
             alwaysOnTopText.Text = T("Always on top", "Alltid øverst");
             settingsButtonText.Text = T("Settings", "Innstillinger");
-            info.Text = T("Spacebar or minimize app to reset date", "Mellomrom eller minimer appen for å gå til i dag");
+            SetKeyHint(infoPanel, T(" month · ", " måned · "), T(" year · ", " år · "), T(" / minimize: today", " / minimer: i dag"));
 
             // Year view
-            yearInfo.Text = T("Spacebar to go to the current year", "Mellomrom for å gå til inneværende år");
+            SetKeyHint(yearInfoPanel, T(" change year · ", " bytt år · "), null, T(" this year", " nåværende år"));
             yearAlwaysOnTopText.Text = alwaysOnTopText.Text;
             yearSettingsText.Text = settingsButtonText.Text;
 
