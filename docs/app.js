@@ -341,7 +341,8 @@
     var spare = touchOnly() ? 0.9 : 1;
     [$('infoText'), $('yearInfoText')].forEach(function (e) {
       var page = $(e.closest('.page').id), colWidth = (+page.dataset.w - 16) / 3;
-      var size = Math.min(10.5, fitSize(e.textContent, colWidth - 10, 18) * spare);
+      var text = e.textContent + (e.querySelector('.spaceKey') ? '\u2003\u2003\u2003\u2002' : '');   // room for the key
+      var size = Math.min(10.5, fitSize(text, colWidth - 10, 18) * spare);
       e.style.fontSize = size + 'px';
       if (!e.offsetParent) return;
       var avail = e.parentElement.clientWidth * spare, w = e.offsetWidth;
@@ -544,11 +545,12 @@
     rescale();
   });
 
-  // "Minimize app to reset date"
+  // "Minimize app to reset date" (installed app only)
   var wasHidden = false;
   document.addEventListener('visibilitychange', function () {
     if (document.hidden) { wasHidden = true; return; }
-    if (wasHidden && isCalendarPage(currentPage)) resetToToday();
+    // Only in the installed app: in a browser, switching tabs should not move the calendar
+    if (wasHidden && isInstalled() && isCalendarPage(currentPage)) resetToToday();
     wasHidden = false;
     updateBadge(true);
   });
@@ -809,6 +811,13 @@
     else if (q.addListener) q.addListener(function () { applyTexts(); });
   });
 
+  // Bottom-left hint with a small spacebar key in front of the text
+  function setKeyHint(e, text) {
+    e.textContent = '';
+    e.appendChild(el('span', 'spaceKey'));
+    e.appendChild(document.createTextNode(text));
+  }
+
   function applyTexts() {
     document.documentElement.classList.toggle('touch', touchOnly());
     if (currentPage === 'yearView' && +$('yearView').dataset.w !== yearLayout().w) { showPage('yearView'); renderYearView(); }
@@ -818,8 +827,11 @@
       $('infoText').textContent = T('Swipe ← → for month, ↓ for today', 'Sveip ← → for ny måned, ↓ for i dag');
       $('yearInfoText').textContent = T('Swipe ← → to change year, ↓ for this year', 'Sveip ← → for å bytte år, ↓ for i år');
     } else {
-      $('infoText').textContent = T('Spacebar or minimize app to reset date', 'Mellomrom eller minimer appen for å gå til i dag');
-      $('yearInfoText').textContent = T('Spacebar to go to the current year', 'Mellomrom for å gå til inneværende år');
+      // Minimizing only resets the date in the installed app (see visibilitychange), not in a browser tab
+      setKeyHint($('infoText'), isInstalled()
+        ? T('Spacebar or minimize app to reset date', 'Mellomrom eller minimer appen for å gå til i dag')
+        : T('Spacebar to go to today', 'Mellomrom for å gå til i dag'));
+      setKeyHint($('yearInfoText'), T('Spacebar to go to the current year', 'Mellomrom for å gå til inneværende år'));
     }
     Array.prototype.forEach.call(document.querySelectorAll('.t-settings'), function (s) { s.textContent = T('Settings', 'Innstillinger'); });
     // Shrink the bottom-row texts if they are too long for their column (like the Viewbox in the Windows app)
@@ -904,7 +916,7 @@
   // reloading it, so size the window when the display mode switches to app mode.
   if (window.matchMedia) {
     var appMode = matchMedia('(display-mode: standalone)');
-    var onModeChange = function () { if (isInstalled()) { settings.appMaximized = false; startAppSizing(); } updateInstallButtons(); };
+    var onModeChange = function () { if (isInstalled()) { settings.appMaximized = false; startAppSizing(); } applyTexts(); };
     if (appMode.addEventListener) appMode.addEventListener('change', onModeChange);
     else if (appMode.addListener) appMode.addListener(onModeChange);
   }
