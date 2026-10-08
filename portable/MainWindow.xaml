@@ -359,33 +359,37 @@
                         <ColumnDefinition Width="*"/>
                     </Grid.ColumnDefinitions>
                 </Grid>
-                <!-- Bottom row -->
-                <Grid Grid.Row="2" Grid.Column="2">
-                    <Viewbox Stretch="Uniform" HorizontalAlignment="Left">
-                        <Border x:Name="alwaysOnTopPanel" BorderBrush="Black" BorderThickness="1" Background="White" Cursor="Hand"
-                                MouseLeftButtonUp="OnTop_Click">
-                            <TextBlock x:Name="alwaysOnTopText" Text="Always on top" Margin="5,0,5,0" Foreground="Black" FontSize="11" HorizontalAlignment="Left"/>
-                        </Border>
+                <!-- Bottom row: the key hint may use the free space in the middle column, the buttons sit together at its right edge -->
+                <Grid Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="3">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <Viewbox Grid.Column="0" HorizontalAlignment="Left" Margin="0.5,0.5,6,0.5">
+                        <StackPanel x:Name="infoPanel" Orientation="Horizontal" Margin="6,4,0,1"/>
                     </Viewbox>
-                    <Viewbox Stretch="Uniform" HorizontalAlignment="Right">
-                        <Border BorderBrush="Black" BorderThickness="1" Background="White" Cursor="Hand"
-                                MouseLeftButtonUp="SettingsButton_Click">
-                            <StackPanel Orientation="Horizontal">
-                                <TextBlock x:Name="settingsButtonText" Text="Settings" Margin="5,0,5,0" Foreground="Black" VerticalAlignment="Center"/>
-                                <TextBlock Text="&#xE713;" FontFamily="Segoe MDL2 Assets" FontSize="20" Foreground="Black" VerticalAlignment="Center"/>
-                            </StackPanel>
-                        </Border>
-                    </Viewbox>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal">
+                        <Viewbox Stretch="Uniform" Height="20" Margin="0,0,6,0">
+                            <Border x:Name="alwaysOnTopPanel" BorderBrush="Black" BorderThickness="1" Background="White" Cursor="Hand"
+                                    MouseLeftButtonUp="OnTop_Click">
+                                <TextBlock x:Name="alwaysOnTopText" Text="Always on top" Margin="5,0,5,0" Foreground="Black" FontSize="11" HorizontalAlignment="Left"/>
+                            </Border>
+                        </Viewbox>
+                        <Viewbox Stretch="Uniform" Height="20">
+                            <Border BorderBrush="Black" BorderThickness="1" Background="White" Cursor="Hand"
+                                    MouseLeftButtonUp="SettingsButton_Click">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock x:Name="settingsButtonText" Text="Settings" Margin="5,0,5,0" Foreground="Black" VerticalAlignment="Center"/>
+                                    <TextBlock Text="&#xE713;" FontFamily="Segoe MDL2 Assets" FontSize="20" Foreground="Black" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Border>
+                        </Viewbox>
+                    </StackPanel>
                 </Grid>
 
                 <Grid Grid.Row="2" Grid.Column="4" Margin="0.5">
                     <Viewbox Stretch="Uniform">
                         <TextBlock x:Name="Tagline" Text="QuickCal v2.0 - Magnus Petersen" HorizontalAlignment="Center" Margin="0,0,3,0" Foreground="Black"/>
-                    </Viewbox>
-                </Grid>
-                <Grid Grid.Row="2" Grid.Column="0" Margin="0.5">
-                    <Viewbox HorizontalAlignment="Left">
-                        <TextBlock x:Name="info" Text="Spacebar or minimize app to reset date" HorizontalAlignment="Left" Padding="6,6,0,1" Foreground="Black"/>
                     </Viewbox>
                 </Grid>
             </Grid>
@@ -435,7 +439,7 @@
                         <ColumnDefinition Width="*"/>
                     </Grid.ColumnDefinitions>
                     <Viewbox Grid.Column="0" HorizontalAlignment="Left" Margin="0.5">
-                        <TextBlock x:Name="yearInfo" Text="Spacebar to go to the current year" Padding="6,6,0,1" Foreground="Black"/>
+                        <StackPanel x:Name="yearInfoPanel" Orientation="Horizontal" Margin="6,4,0,1"/>
                     </Viewbox>
                     <Viewbox Grid.Column="1" Stretch="Uniform" HorizontalAlignment="Left">
                         <Border x:Name="yearAlwaysOnTopPanel" BorderBrush="Black" BorderThickness="1" Background="White" Cursor="Hand"
