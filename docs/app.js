@@ -633,7 +633,13 @@
     });
   });
 
-  function setCheck(btn, on) { btn.classList.toggle('on', on); btn.textContent = on ? '🗹' : '☐'; btn.dataset.on = on ? '1' : ''; }
+  function setCheck(btn, on) {
+    btn.classList.toggle('on', on);
+    btn.textContent = touchOnly() ? '' : on ? '🗹' : '☐';   // drawn as a switch by CSS on touch devices
+    btn.dataset.on = on ? '1' : '';
+    btn.setAttribute('role', 'switch');
+    btn.setAttribute('aria-checked', on ? 'true' : 'false');
+  }
   function isChecked(btn) { return btn.dataset.on === '1'; }
   function updateHolidayRows() {
     var on = isChecked($('holidaysCheck'));
@@ -790,6 +796,8 @@
   });
 
   function applyTexts() {
+    document.documentElement.classList.toggle('touch', touchOnly());
+    [$('holidaysCheck'), $('easterCheck')].forEach(function (b) { setCheck(b, isChecked(b)); });
     document.documentElement.lang = norwegian() ? 'no' : 'en';
     if (touchOnly()) {
       $('infoText').textContent = T('Swipe ← → for month, ↓ for today', 'Sveip ← → for ny måned, ↓ for i dag');
