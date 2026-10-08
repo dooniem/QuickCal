@@ -113,7 +113,19 @@ namespace QuickCal
                 TextBlock textBlock = CreateTextBlock(day.ToString(CultureInfo.InvariantCulture), Colors.Black);
                 Border border;
 
-                if (date == today)
+                if (date == today && date.Month == 9 && date.Day == 5)
+                {
+                    // Today on 5 September: keep the gold, with today's red border around it
+                    textBlock.FontWeight = FontWeights.Bold;
+                    border = CreateColoredBorder(textBlock, HeaderBlue, false, settingsManager.BirthdayText());
+                    // Fade only the gold (not the whole cell) so the red border stays crisp
+                    Brush fadedGold = GetGoldBrush().CloneCurrentValue();
+                    fadedGold.Opacity = 0.8;
+                    border.Background = fadedGold;
+                    border.BorderBrush = Brushes.Red;
+                    border.BorderThickness = new Thickness(2);
+                }
+                else if (date == today)
                 {
                     // Today
                     textBlock.Foreground = Brushes.White;

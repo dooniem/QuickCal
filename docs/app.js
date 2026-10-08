@@ -278,6 +278,11 @@
 
       if (date.getTime() === t.getTime()) {
         cell.className = 'cell today';
+        // 5 September keeps its gold on the day itself, with today's red border around it
+        if (month0 === 8 && day === 5) {
+          cell.classList.add('gold');
+          cell.dataset.tip = tx(HOLIDAY_TEXTS.birthday);
+        }
       } else if (key in holidays) {
         cell.classList.add('holiday');
         cell.dataset.tip = holidays[key];
