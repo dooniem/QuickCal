@@ -312,8 +312,20 @@
   }
   function isCalendarPage(id) { return id === 'monthView' || id === 'yearView'; }
 
+  // Year view: 4 x 3 months on a PC screen, 3 x 4 on phones and tablets (they are held upright).
+  // Same month size either way, so the page just gets narrower and taller.
+  function yearLayout() {
+    return touchOnly() ? { cols: 3, rows: 4, w: 768, h: 34 + 20 + 4 * (680 - 34 - 20) / 3 }
+                       : { cols: 4, rows: 3, w: 1024, h: 680 };
+  }
+
   function showPage(id) {
     closePopups();
+    if (id === 'yearView') {
+      var L = yearLayout();
+      $(id).dataset.w = L.w;
+      $(id).dataset.h = L.h;
+    }
     pages.forEach(function (p) { $(p).classList.toggle('hidden', p !== id); });
     currentPage = id;
     var page = $(id), scaler = $('scaler');
@@ -373,9 +385,11 @@
   function renderYearView() {
     $('yearTitle').textContent = String(activeYear);
     loadHolidays([activeYear]);
-    var grid = $('yearGrid');
+    var grid = $('yearGrid'), L = yearLayout();
     grid.innerHTML = '';
-    var cw = (1024 / 4 - 8) / 8, ch = ((680 - 34 - 20) / 3 - 8) / 8;
+    grid.style.gridTemplateColumns = 'repeat(' + L.cols + ', 1fr)';
+    grid.style.gridTemplateRows = 'repeat(' + L.rows + ', 1fr)';
+    var cw = (L.w / L.cols - 8) / 8, ch = ((L.h - 34 - 20) / L.rows - 8) / 8;
     for (var m = 0; m < 12; m++) {
       var box = el('div', 'month');
       grid.appendChild(box);
@@ -797,6 +811,7 @@
 
   function applyTexts() {
     document.documentElement.classList.toggle('touch', touchOnly());
+    if (currentPage === 'yearView' && +$('yearView').dataset.w !== yearLayout().w) { showPage('yearView'); renderYearView(); }
     [$('holidaysCheck'), $('easterCheck')].forEach(function (b) { setCheck(b, isChecked(b)); });
     document.documentElement.lang = norwegian() ? 'no' : 'en';
     if (touchOnly()) {
