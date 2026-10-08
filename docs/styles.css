@@ -41,6 +41,8 @@ button { font-family: inherit; color: inherit; }
 .cell.today:hover { box-shadow: none; border-color: red; }
 .cell.holiday { background: var(--holiday); color: #fff; }
 .cell.gold { background: url("assets/gold_texture.jpg") center / 100% 100%; font-weight: bold; opacity: 0.8; }
+/* Today on 5 September: same faded gold, but drawn without opacity so the red border stays crisp */
+.cell.today.gold { color: #000; opacity: 1; background: linear-gradient(rgba(255,255,255,.2), rgba(255,255,255,.2)), url("assets/gold_texture.jpg") center / 100% 100%; }
 
 /* ---------- Year view ---------- */
 #yearView { display: grid; grid-template-rows: 34px 1fr 20px; }
