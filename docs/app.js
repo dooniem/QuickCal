@@ -320,6 +320,21 @@
     scaler.style.width = page.dataset.w + 'px';
     scaler.style.height = page.dataset.h + 'px';
     rescale();
+    fitInfoTexts();
+  }
+
+  // Shrink the bottom-left hint to fit its column. Measured on the shown page, and on phones with
+  // some room to spare: iPhone draws small text in the scaled page a little wider than it measures.
+  function fitInfoTexts() {
+    var spare = touchOnly() ? 0.9 : 1;
+    [$('infoText'), $('yearInfoText')].forEach(function (e) {
+      var page = $(e.closest('.page').id), colWidth = (+page.dataset.w - 16) / 3;
+      var size = Math.min(10.5, fitSize(e.textContent, colWidth - 10, 18) * spare);
+      e.style.fontSize = size + 'px';
+      if (!e.offsetParent) return;
+      var avail = e.parentElement.clientWidth * spare, w = e.offsetWidth;
+      if (w > avail) e.style.fontSize = size * avail / w + 'px';
+    });
   }
 
   function rescale() {
@@ -777,7 +792,7 @@
   function applyTexts() {
     document.documentElement.lang = norwegian() ? 'no' : 'en';
     if (touchOnly()) {
-      $('infoText').textContent = T('Swipe ← → to change month, ↓ for today', 'Sveip ← → for å bytte måned, ↓ for i dag');
+      $('infoText').textContent = T('Swipe ← → for month, ↓ for today', 'Sveip ← → for ny måned, ↓ for i dag');
       $('yearInfoText').textContent = T('Swipe ← → to change year, ↓ for this year', 'Sveip ← → for å bytte år, ↓ for i år');
     } else {
       $('infoText').textContent = T('Spacebar or minimize app to reset date', 'Mellomrom eller minimer appen for å gå til i dag');
@@ -786,9 +801,7 @@
     Array.prototype.forEach.call(document.querySelectorAll('.t-settings'), function (s) { s.textContent = T('Settings', 'Innstillinger'); });
     // Shrink the bottom-row texts if they are too long for their column (like the Viewbox in the Windows app)
     var colWidth = (600 - 16) / 3;
-    [$('infoText'), $('yearInfoText')].forEach(function (e) {
-      e.style.fontSize = Math.min(10.5, fitSize(e.textContent, colWidth - 10, 18)) + 'px';
-    });
+    fitInfoTexts();
     Array.prototype.forEach.call(document.querySelectorAll('.tagline'), function (e) {
       e.style.fontSize = Math.min(12.5, fitSize(e.textContent, colWidth - 6, 18)) + 'px';
     });
