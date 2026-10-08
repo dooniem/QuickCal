@@ -59,6 +59,7 @@ button { font-family: inherit; color: inherit; }
 .bottomRow > :nth-child(3) { grid-column: 5; }
 .smallInfo { font-size: 10.5px; padding-left: 6px; white-space: nowrap; display: inline-block; }
 .fitLeft { overflow: hidden; }
+.spaceKey { display: inline-block; width: 2.6em; height: 1.05em; margin-right: 0.45em; vertical-align: -0.2em; border: 1px solid #555; border-bottom-width: 2px; border-radius: 0.25em; background: #f4f4f4; }
 .right { display: flex; justify-content: flex-end; }
 .linkBox { border: 1px solid #000; background: #fff; font-size: 12px; line-height: 15px; padding: 0 4px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; }
 .linkBox:hover { background: #eee; }
