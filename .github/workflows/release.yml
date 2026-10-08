@@ -3,12 +3,18 @@
 # - Uploading changes to the portable/ folder also starts a build.
 # - You can also start a build by hand (Actions -> Build QuickCal Portable -> Run workflow);
 #   the .exe is then available as a download on the run's summary page.
+#   Fill in "Release tag" (e.g. v2.0.1) to also create and publish that release, with QuickCal.exe attached.
 name: Build QuickCal Portable
 
 on:
   release:
     types: [published]
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Release tag (e.g. v2.0.1). Leave empty to only build.'
+        required: false
+        default: ''
   push:
     branches: [main]
     paths:
@@ -43,3 +49,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release upload "${{ github.event.release.tag_name }}" portable/publish/QuickCal.exe --clobber
+
+      - name: Create the release with QuickCal.exe
+        if: github.event_name == 'workflow_dispatch' && inputs.release_tag != ''
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: gh release create "$env:RELEASE_TAG" portable/publish/QuickCal.exe --target "${{ github.sha }}" --title "QuickCal Portable $env:RELEASE_TAG" --generate-notes
