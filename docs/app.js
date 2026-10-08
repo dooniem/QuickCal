@@ -184,11 +184,19 @@
   // Text fitting (like WPF Viewbox: text grows/shrinks to fill its box)
   // =====================================================================================
 
-  var measureCtx = document.createElement('canvas').getContext('2d');
-  var FONT = getComputedStyle(document.documentElement).getPropertyValue('--font') || 'Segoe UI, sans-serif';
+  // Measured with a hidden span so it uses the same font the page renders with. (A canvas
+  // ignores font stacks like "system-ui" on some browsers and then measures the wrong font,
+  // so on iPhone the bottom-row text was not shrunk and got cut off.)
+  var measureSpan = null;
   function fitSize(text, w, h, weight) {
-    measureCtx.font = (weight || 'normal') + ' 100px ' + FONT;
-    var width = Math.max(1, measureCtx.measureText(text).width) / 100;
+    if (!measureSpan) {
+      measureSpan = document.createElement('span');
+      measureSpan.style.cssText = 'position:absolute;left:-9999px;top:0;visibility:hidden;white-space:nowrap;font-size:100px;';
+      document.body.appendChild(measureSpan);
+    }
+    measureSpan.style.fontWeight = weight || 'normal';
+    measureSpan.textContent = text;
+    var width = Math.max(1, measureSpan.getBoundingClientRect().width) / 100;
     return Math.max(4, Math.min(w / width, h / 1.33));
   }
 
@@ -753,10 +761,28 @@
       'Navnene i menyene kan variere litt mellom nettleserversjoner og språk.');
   }
 
+  // Touch-only device (phone/tablet without mouse or trackpad): show swipe hints instead of
+  // keyboard hints. A PC, also one with a touch screen, has a fine pointer and keeps the keyboard text.
+  var touchQuery = window.matchMedia ? matchMedia('(hover: none) and (pointer: coarse)') : null;
+  var finePointerQuery = window.matchMedia ? matchMedia('(any-pointer: fine)') : null;
+  function touchOnly() {
+    return !!touchQuery && touchQuery.matches && !finePointerQuery.matches;
+  }
+  [touchQuery, finePointerQuery].forEach(function (q) {
+    if (!q) return;
+    if (q.addEventListener) q.addEventListener('change', function () { applyTexts(); });
+    else if (q.addListener) q.addListener(function () { applyTexts(); });
+  });
+
   function applyTexts() {
     document.documentElement.lang = norwegian() ? 'no' : 'en';
-    $('infoText').textContent = T('Spacebar or minimize app to reset date', 'Mellomrom eller minimer appen for å gå til i dag');
-    $('yearInfoText').textContent = T('Spacebar to go to the current year', 'Mellomrom for å gå til inneværende år');
+    if (touchOnly()) {
+      $('infoText').textContent = T('Swipe ← → to change month, ↓ for today', 'Sveip ← → for å bytte måned, ↓ for i dag');
+      $('yearInfoText').textContent = T('Swipe ← → to change year, ↓ for this year', 'Sveip ← → for å bytte år, ↓ for i år');
+    } else {
+      $('infoText').textContent = T('Spacebar or minimize app to reset date', 'Mellomrom eller minimer appen for å gå til i dag');
+      $('yearInfoText').textContent = T('Spacebar to go to the current year', 'Mellomrom for å gå til inneværende år');
+    }
     Array.prototype.forEach.call(document.querySelectorAll('.t-settings'), function (s) { s.textContent = T('Settings', 'Innstillinger'); });
     // Shrink the bottom-row texts if they are too long for their column (like the Viewbox in the Windows app)
     var colWidth = (600 - 16) / 3;
@@ -788,7 +814,9 @@
       'Når QuickCal er installert og åpen (gjerne minimert), vises ukenummeret på ikonet. Høyreklikk ikonet og velg «Fest til oppgavelinjen».')));
     $('wAutostartText').textContent = T('Start automatically when you sign in', 'Start automatisk når du logger på');
     $('wAutostartBtn').textContent = T('Show me how', 'Vis meg hvordan');
-    $('wTip').textContent = T(
+    $('wTip').textContent = touchOnly() ? T(
+      'Tip: the arrows, the month name and the year at the top can be tapped. Swipe left or right to change month, and swipe down to go to today.',
+      'Tips: Pilene, månedsnavnet og årstallet øverst kan trykkes på. Sveip til venstre eller høyre for å bytte måned, og ned for å gå til i dag.') : T(
       'Tip: the arrows, the month name and the year at the top are clickable. ← → change month, ↑ ↓ change year, and Spacebar goes to today. Maximize the window to see the whole year.',
       'Tips: Pilene, månedsnavnet og årstallet øverst er klikkbare. ← → bytter måned, ↑ ↓ bytter år, og mellomrom går til i dag. Maksimer vinduet for å se hele året.');
     updateInstallButtons();
