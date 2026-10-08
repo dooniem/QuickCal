@@ -46,7 +46,7 @@ QuickCal does not install anything. To remove it:
 
 ### Privacy
 
-QuickCal Portable makes no network connections and collects no data. See the [code signing policy](CODE_SIGNING_POLICY.md).
+QuickCal Portable makes no network connections and collects no data.
 
 ### Build from source
 
@@ -111,7 +111,6 @@ quickcal/
 ├── .github/          GitHub Actions: builds QuickCal.exe for each release
 ├── portable/         QuickCal Portable: WPF / .NET 10 Visual Studio project
 ├── docs/             QuickCal Web: static site served by GitHub Pages
-├── CODE_SIGNING_POLICY.md  Code signing policy and privacy policy
 ├── INSTALLASJON.md   Install guide for the web app, in Norwegian
 └── LICENSE           MIT License
 ```
