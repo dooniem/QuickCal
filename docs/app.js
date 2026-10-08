@@ -459,6 +459,28 @@
     e.preventDefault();
   });
 
+  // ---------- Touch swipe: same as the keys. Left/right = ← →, down = Space (today) ----------
+  var swipe = null;
+  document.addEventListener('pointerdown', function (e) {
+    swipe = (e.pointerType === 'touch' || e.pointerType === 'pen') && e.isPrimary && isCalendarPage(currentPage)
+      ? { x: e.clientX, y: e.clientY, t: Date.now() } : null;
+  });
+  document.addEventListener('pointercancel', function () { swipe = null; });
+  document.addEventListener('pointerup', function (e) {
+    if (!swipe || !e.isPrimary) return;
+    var dx = e.clientX - swipe.x, dy = e.clientY - swipe.y, quick = Date.now() - swipe.t < 1000;
+    swipe = null;
+    if (!quick || !isCalendarPage(currentPage)) return;
+    var yearView = currentPage === 'yearView';
+    if (Math.abs(dx) >= 40 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+      var step = dx < 0 ? 1 : -1;   // swipe left = forward, like turning a page
+      if (yearView) changeYear(step); else changeMonth(step);
+    } else if (dy >= 40 && dy > Math.abs(dx) * 1.5) {
+      resetToToday();
+    } else return;
+    closePopups();
+  });
+
   $('yearBack').addEventListener('click', function () { changeYear(-1); });
   $('yearForward').addEventListener('click', function () { changeYear(1); });
 
