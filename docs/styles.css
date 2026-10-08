@@ -84,6 +84,11 @@ button { font-family: inherit; color: inherit; }
 .setRow select { font-size: 11px; height: 22px; min-width: 120px; }
 .check { background: transparent; border: 0; font-family: "Segoe UI Symbol", var(--font); font-size: 26px; line-height: 26px; padding: 0; cursor: pointer; color: #000; }
 .check.on { color: blue; }
+/* Touch-only devices: a switch instead of the ☐/🗹 glyphs, which phones draw as odd emoji */
+.touch .check { -webkit-appearance: none; appearance: none; -webkit-tap-highlight-color: transparent; width: 34px; height: 20px; border-radius: 10px; background: #c8c8c8; position: relative; transition: background .15s; }
+.touch .check::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.3); transition: left .15s; }
+.touch .check.on { background: blue; }
+.touch .check.on::after { left: 16px; }
 #weeksInput { width: 25px; height: 19px; text-align: center; font-size: 12px; padding: 0; }
 
 .wRow { display: grid; grid-template-columns: 24px 1fr auto; align-items: center; min-height: 28px; margin: 2px 0; column-gap: 0; }
