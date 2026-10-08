@@ -1,0 +1,22 @@
+# Visual Studio / .NET build output
+bin/
+obj/
+publish/
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+.vs/
+*.user
+*.suo
+*.userprefs
+*.pdb
+TestResults/
+
+# QuickCal user settings (created next to QuickCal.exe)
+QuickCal.settings.json
+
+# OS files
+Thumbs.db
+Desktop.ini
+.DS_Store

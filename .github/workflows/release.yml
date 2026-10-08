@@ -1,5 +1,6 @@
 # Builds the portable QuickCal.exe on GitHub.
 # - When you publish a release on GitHub, QuickCal.exe is attached to it automatically.
+# - Uploading changes to the portable/ folder also starts a build.
 # - You can also start a build by hand (Actions -> Build QuickCal Portable -> Run workflow);
 #   the .exe is then available as a download on the run's summary page.
 name: Build QuickCal Portable
@@ -8,7 +9,7 @@ on:
   release:
     types: [published]
   workflow_dispatch:
-    push:
+  push:
     branches: [main]
     paths:
       - 'portable/**'
