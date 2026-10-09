@@ -537,7 +537,7 @@
   var lastSwipe = 0;
   document.addEventListener('click', function (e) {
     var t = e.target;
-    if (!t.closest || !document.body.contains(t) || t.closest('.noteEditor, .noteImageView')) return;
+    if (!t.closest || !document.body.contains(t) || t.closest('.noteEditor, .noteImageView, .noteHelp')) return;
     if (notes(function (N) { return N.isOpen(); }, false)) {
       notes(function (N) { N.closeEditor(); });
       e.stopPropagation();
@@ -611,7 +611,7 @@
   // ---------- Touch swipe: same as the keys. Left/right = ← →, down = Space (today) ----------
   var swipe = null;
   document.addEventListener('pointerdown', function (e) {
-    var inNote = e.target.closest && e.target.closest('.noteEditor, .noteImageView');
+    var inNote = e.target.closest && e.target.closest('.noteEditor, .noteImageView, .noteHelp');
     swipe = (e.pointerType === 'touch' || e.pointerType === 'pen') && e.isPrimary && isCalendarPage(currentPage) && !inNote
       ? { x: e.clientX, y: e.clientY, t: Date.now() } : null;
   });

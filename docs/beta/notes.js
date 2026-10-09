@@ -626,7 +626,9 @@ window.QuickCalNotes = (function () {
         note.repeat = v ? { freq: v, every: 1, days: [S.getDay()], by: 'date', nth: -1, wd: S.getDay(), shiftUnit: '', shift: 0, shiftWd: 4, until: '' } : null;
         changed();
       }));
-    if (!r) return;
+    var help = el('button', 'nrHelp', '?'); help.title = T('How repeating works', 'Slik virker gjentakelse');
+    help.addEventListener('click', function (e) { e.stopPropagation(); showRepeatHelp(); });
+    if (!r) { l1.appendChild(help); return; }
     l1.appendChild(el('span', '', T('every', 'hver')));
     l1.appendChild(num(r.every || 1, 1, 99, function (v) { set('every', v); }));
     l1.appendChild(el('span', '', r.every > 1
@@ -672,12 +674,67 @@ window.QuickCalNotes = (function () {
     until.addEventListener('change', function () { set('until', until.value && until.value >= note.date ? until.value : ''); });
     l5.appendChild(until);
     if (!r.until) l5.appendChild(el('span', 'nrMuted', T('(no end)', '(uten slutt)')));
+    l1.appendChild(help);
 
     var next = nextOccurrences(note.date, r, 4);
     var l6 = line('nrNext');
-    l6.textContent = '↻ ' + summary(note.date, r) + '. ' + (next.length
+    l6.textContent = '↻ ' + summary(note.date, r).replace(/\.?$/, '. ') + (next.length
       ? T('Next: ', 'Neste: ') + next.map(shortDate).join(', ')
       : T('No more days.', 'Ingen flere dager.'));
+  }
+
+  // The ? in the repeat panel: what each choice does, with examples
+  var helpBox = null;
+  function closeRepeatHelp() {
+    if (!helpBox) return;
+    helpBox.remove(); helpBox = null;
+    document.removeEventListener('keydown', helpKey, true);
+  }
+  function helpKey(e) { if (e.key === 'Escape') { e.stopPropagation(); e.preventDefault(); closeRepeatHelp(); } }
+  function showRepeatHelp() {
+    closeRepeatHelp();
+    var no = T('', 'x') === 'x';
+    var html = no ? [
+      '<h2>Slik virker gjentakelse</h2>',
+      '<p><b>Gjenta</b> daglig, ukentlig, månedlig eller årlig. «Hver 2.» betyr annenhver gang. Ukentlig: velg en eller flere ukedager. Månedlig: <i>på dag 15</i> (samme dato som notatet) eller <i>første … siste</i> ukedag i måneden.</p>',
+      '<p><b>Flytt</b> skyver hver dato etterpå:</p><ul>',
+      '<li><i>dager</i>: vanlige kalenderdager. Minus flytter bakover (−2 = to dager før).</li>',
+      '<li><i>arbeidsdager</i>: hopper over helger og røde dager i kalenderen (helligdager, påske, jul). 0 = neste arbeidsdag hvis datoen er en fridag.</li>',
+      '<li><i>til første … etter</i>: neste valgte ukedag, uansett helligdager.</li></ul>',
+      '<p><b>Til og med</b>: siste dato. Tom = uten slutt.</p>',
+      '<p><b>Neste:</b> nederst i panelet viser de neste datoene. Sjekk dem når du lager en regel.</p>',
+      '<h3>Eksempler</h3><ul>',
+      '<li><b>Frist 4 arbeidsdager etter siste søndag</b> (cut-off søndag): Månedlig · siste søndag · Flytt 4 arbeidsdager. Velg <i>arbeidsdager</i>, ikke «til første torsdag etter»: torsdagen blir feil i uker med helligdager, for eksempel i jula og påsken.</li>',
+      '<li><b>Første arbeidsdag i måneden</b>: lag notatet på den 1., Månedlig · på dag 1 · Flytt 0 arbeidsdager.</li>',
+      '<li><b>Annenhver mandag</b>: Ukentlig · hver 2. uke · ma.</li>',
+      '<li><b>Bursdag</b>: Årlig.</li></ul>',
+      '<p class="nhSmall">Notatet lagres én gang. Endrer eller sletter du det, gjelder det alle datoene, også avkrysninger i sjekklister. Startdagen viser bare notatet hvis den passer med regelen.</p>'
+    ] : [
+      '<h2>How repeating works</h2>',
+      '<p><b>Repeat</b> daily, weekly, monthly or yearly. "Every 2" means every other time. Weekly: pick one or more weekdays. Monthly: <i>on day 15</i> (the note\'s date) or the <i>first … last</i> weekday of the month.</p>',
+      '<p><b>Move</b> shifts each date afterwards:</p><ul>',
+      '<li><i>days</i>: calendar days. Minus moves back (−2 = two days before).</li>',
+      '<li><i>work days</i>: skips weekends and red days in the calendar (holidays, Easter, Christmas). 0 = the next work day if the date is a day off.</li>',
+      '<li><i>to the first … after</i>: the next chosen weekday, holidays or not.</li></ul>',
+      '<p><b>Until</b>: the last date. Empty = no end.</p>',
+      '<p><b>Next:</b> at the bottom of the panel shows the coming dates. Check them when you make a rule.</p>',
+      '<h3>Examples</h3><ul>',
+      '<li><b>Deadline 4 work days after the last Sunday</b> (cut-off Sunday): Monthly · last Sunday · Move 4 work days. Choose <i>work days</i>, not "to the first Thursday after": that Thursday is wrong in weeks with holidays, such as Christmas and Easter.</li>',
+      '<li><b>First work day of the month</b>: make the note on the 1st, Monthly · on day 1 · Move 0 work days.</li>',
+      '<li><b>Every other Monday</b>: Weekly · every 2 weeks · Mo.</li>',
+      '<li><b>Birthday</b>: Yearly.</li></ul>',
+      '<p class="nhSmall">The note is stored once. Changing or deleting it applies to all its dates, ticked checklist items too. The start day only shows the note if it fits the rule.</p>'
+    ];
+    helpBox = el('div', 'noteHelp');
+    var inner = el('div', 'nhBox');
+    inner.innerHTML = html.join('');
+    var x = el('button', 'neClose', '✕'); x.title = T('Close', 'Lukk');
+    x.addEventListener('click', closeRepeatHelp);
+    inner.insertBefore(x, inner.firstChild);
+    helpBox.appendChild(inner);
+    helpBox.addEventListener('click', function (e) { if (e.target === helpBox) closeRepeatHelp(); });
+    document.body.appendChild(helpBox);
+    document.addEventListener('keydown', helpKey, true);
   }
 
   function flush() {
@@ -692,6 +749,7 @@ window.QuickCalNotes = (function () {
   function closeEditor() {
     if (!editor) return;
     var ed = editor;
+    closeRepeatHelp();
     flush();
     editor = null;
     Array.prototype.forEach.call(ed.box.querySelectorAll('img'), function (i) { URL.revokeObjectURL(i.src); });
