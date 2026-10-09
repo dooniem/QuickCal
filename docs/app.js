@@ -734,8 +734,8 @@
     var edge = browserKind() === 'edge';
     $('installedTitle').textContent = T('QuickCal is installed', 'QuickCal er installert');
     $('installedIntro').textContent = edge
-      ? T('Edge now asks what QuickCal may do. We recommend ticking both and clicking Allow:',
-          'Edge spør nå hva QuickCal skal få lov til. Vi anbefaler å krysse av for begge og trykke Tillat:')
+      ? T('Edge now asks what QuickCal may do. Tick both and click Allow:',
+          'Edge spør nå hva QuickCal skal få lov til. Kryss av for begge og trykk Tillat:')
       : T('Two things make QuickCal work best:', 'To ting gjør at QuickCal fungerer best:');
     var steps = [];
     if (edge) {
