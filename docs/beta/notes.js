@@ -880,17 +880,19 @@ window.QuickCalNotes = (function () {
   // ---------- Notes page: search, color filter and Excel export ----------
   // Live search: notes whose text contains what is typed (any case). Color filter: none checked = all colors;
   // '' stands for notes without a color. Both apply together. Kept while the app is open.
-  var filter = { q: '', colors: [] };
+  // Pictures: '' = all notes, 'with' = only notes with pictures, 'without' = only notes without (one button, click to step).
+  var filter = { q: '', colors: [], pics: '' };
   function filteredKeys() {
     var q = filter.q.trim().toLowerCase();
     return Object.keys(index).sort().filter(function (k) {
       var n = index[k];
       if (filter.colors.length && filter.colors.indexOf(n.color || '') < 0) return false;
+      if (filter.pics && (filter.pics === 'with') !== !!n.images) return false;
       return !q || n.text.toLowerCase().indexOf(q) >= 0;
     });
   }
 
-  var tools = null;   // { search, filterBtn, filterMenu, exportBtn, list, empty }
+  var tools = null;   // { search, filterBtn, filterMenu, picsBtn, exportBtn, list, empty }
   function listTools(t) {
     tools = t;
     t.search.addEventListener('input', function () { filter.q = t.search.value; refreshList(); });
@@ -902,6 +904,10 @@ window.QuickCalNotes = (function () {
     });
     t.filterMenu.addEventListener('click', function (e) { e.stopPropagation(); });
     document.addEventListener('click', function () { t.filterMenu.classList.add('hidden'); });
+    t.picsBtn.addEventListener('click', function () {
+      filter.pics = { '': 'with', 'with': 'without', 'without': '' }[filter.pics];
+      refreshList();
+    });
     t.exportBtn.addEventListener('click', exportList);
     t.backupBtn.title = backupTitle();
     t.backupBtn.addEventListener('click', backup);
@@ -1020,6 +1026,10 @@ window.QuickCalNotes = (function () {
       var active = filter.colors.length > 0;
       tools.filterBtn.classList.toggle('active', active);
       tools.filterBtn.querySelector('.nfCount').textContent = active ? String(filter.colors.length) : '';
+      tools.picsBtn.className = 'notesFilterBtn notesPicsBtn' + (filter.pics ? ' active pics-' + filter.pics : '');
+      tools.picsBtn.title = filter.pics === 'with' ? T('Showing notes with pictures. Click: without pictures', 'Viser notater med bilde. Klikk: uten bilde')
+        : filter.pics === 'without' ? T('Showing notes without pictures. Click: all notes', 'Viser notater uten bilde. Klikk: alle notater')
+        : T('Filter on pictures. Click: only notes with pictures', 'Filtrer på bilder. Klikk: bare notater med bilde');
       tools.exportBtn.disabled = !keys.length;
     }
     showBackupHint();
