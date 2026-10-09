@@ -297,6 +297,8 @@ html.noteDragging #tooltip, html.noteResizing #tooltip { display: none; }
   background: #333; color: #fff; border-radius: 4px; padding: 4px 6px 4px 10px; font: 12px var(--font); box-shadow: 0 2px 8px rgba(0,0,0,.3); }
 .noteUndo button { background: transparent; border: 1px solid #aaa; color: #fff; border-radius: 3px; font: inherit; padding: 1px 8px; cursor: pointer; }
 .noteUndo button:hover { background: #555; }
+.noteUndo.small { left: auto; right: 3px; bottom: auto; top: 3px; transform: none; padding: 2px; gap: 0; font-size: 11px; }
+.noteUndo.small button { padding: 0 6px; border-color: #888; }
 /* Beta: one day of a repeating note, or the whole series */
 .neSeries { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin: 2px 0 4px; padding: 3px 5px; background: #eef3ff; border: 1px solid #c5d3f0; border-radius: 3px; font-size: 11px; }
 .nsText { flex: 1 1 100%; color: #143275; }
