@@ -438,6 +438,8 @@ window.QuickCalNotes = (function () {
   function exportList() {
     var keys = filteredKeys();
     if (!keys.length) return;
+    var save = window.QuickCalXlsx.target('QuickCal-' + T('notes', 'notater') + '-' + key(new Date()) + '.xlsx');
+    save.catch(function () {});   // cancelled: nothing to do
     tools.exportBtn.disabled = true;
     getAll().then(function (all) {
       var byDate = {};
@@ -463,9 +465,9 @@ window.QuickCalNotes = (function () {
         var widths = [10, 10, 6, 10, 50];
         for (var i = 0; i < maxPics; i++) widths.push(22);
         var blob = window.QuickCalXlsx.write(rows, { sheet: T('Notes', 'Notater'), widths: widths, wrap: [4], images: images, rowHeights: rowHeights });
-        window.QuickCalXlsx.download(blob, 'QuickCal-' + T('notes', 'notater') + '-' + key(new Date()) + '.xlsx');
+        return save.then(function (write) { return write(blob); });
       });
-    }).catch(function (e) { if (window.console) console.error(e); })
+    }).catch(function (e) { if (window.console && !(e && e.name === 'AbortError')) console.error(e); })
       .then(function () { tools.exportBtn.disabled = !filteredKeys().length; });
   }
   function picture(blob) {

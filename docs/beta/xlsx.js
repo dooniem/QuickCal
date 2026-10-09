@@ -169,6 +169,26 @@ window.QuickCalXlsx = (function () {
     return zip(files);
   }
 
+  // Where to save. Edge and Chrome on a PC: a "Save as" window, so the file goes where the user wants and
+  // the browser's download button does not appear in the app's title bar. Elsewhere: an ordinary download.
+  // Must be called right in the click (the browser only opens "Save as" for a click). Resolves to a
+  // save(blob) function, or rejects with an AbortError if the user cancels.
+  function target(fileName) {
+    if (window.showSaveFilePicker) {
+      try {
+        return window.showSaveFilePicker({
+          suggestedName: fileName,
+          types: [{ description: 'Excel', accept: { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'] } }]
+        }).then(function (handle) {
+          return function (blob) {
+            return handle.createWritable().then(function (w) { return w.write(blob).then(function () { return w.close(); }); });
+          };
+        });
+      } catch (e) { /* fall back to a download */ }
+    }
+    return Promise.resolve(function (blob) { download(blob, fileName); return Promise.resolve(); });
+  }
+
   // Let the browser save the file (the Downloads folder, as with any download)
   function download(blob, fileName) {
     var a = document.createElement('a');
@@ -179,5 +199,5 @@ window.QuickCalXlsx = (function () {
     setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
   }
 
-  return { write: write, download: download };
+  return { write: write, target: target, download: download };
 })();
