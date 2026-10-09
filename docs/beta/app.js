@@ -875,13 +875,14 @@
     if (currentPage === 'monthView') renderMonthView();
     else if (currentPage === 'yearView') renderYearView();
   }
-  // From the list: show the month of that day and open its note
+  // From the list: show that day (the whole year when the list fills the window, else its month) and open its note
   function showDate(d) {
+    var year = currentPage === 'notesPage' && $('notesPage').classList.contains('full');
     activeMonth = new Date(d.getFullYear(), d.getMonth(), 1);
     activeYear = d.getFullYear();
-    showPage('monthView');
-    renderMonthView();
-    var cell = document.querySelector('#m2 .cell[data-date="' + dateKey(d) + '"]');
+    if (year) { showPage('yearView'); renderYearView(); }
+    else { showPage('monthView'); renderMonthView(); }
+    var cell = document.querySelector((year ? '#yearGrid' : '#m2') + ' .cell[data-date="' + dateKey(d) + '"]');
     if (cell) notes(function (N) { N.openEditor(cell, d, cell.dataset.tip); });
   }
   function openNotesPage() {
