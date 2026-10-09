@@ -243,12 +243,20 @@ window.QuickCalNotes = (function () {
     box.setAttribute('role', 'dialog');
     var head = el('div', 'neHead');
     head.appendChild(el('span', 'neTitle', deps.dayTitle(date)));
+    // – last day: a note can run over several days. The same day = a note for just that day.
+    var endInput = el('input', 'neEnd'); endInput.type = 'date';
+    endInput.min = k; endInput.max = maxEnd(k); endInput.value = k;
+    endInput.title = T('Last day of the note', 'Siste dag for notatet');
+    var dash = el('span', 'neDash', '–');
+    head.appendChild(dash);
+    head.appendChild(endInput);
     if (holidayText) head.appendChild(el('span', 'neHoliday', holidayText));
     var x = el('button', 'neClose', '✕'); x.title = T('Close', 'Lukk');
     head.appendChild(x);
     box.appendChild(head);
 
     if (!available) {
+      dash.remove(); endInput.remove();
       box.appendChild(el('p', 'neInfo', T(
         'Notes are not available in this browser (private window or storage blocked).',
         'Notater er ikke tilgjengelig i denne nettleseren (privat vindu eller lagring sperret).')));
@@ -258,14 +266,6 @@ window.QuickCalNotes = (function () {
       position(box, cell);
       return;
     }
-
-    // To (and including): the last day of the note. The same day = a note for just that day.
-    var span = el('label', 'neSpan');
-    span.appendChild(el('span', '', T('To and including', 'Til og med')));
-    var endInput = el('input'); endInput.type = 'date';
-    endInput.min = k; endInput.max = maxEnd(k); endInput.value = k;
-    span.appendChild(endInput);
-    box.appendChild(span);
 
     var area = el('textarea', 'neText');
     area.placeholder = T('Write a note…', 'Skriv et notat …');
