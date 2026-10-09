@@ -6,7 +6,7 @@
 window.QuickCalNotes = (function () {
   'use strict';
 
-  var DB_NAME = 'quickcal-notes', STORE = 'notes';
+  var DB_NAME = 'quickcal-beta-notes', STORE = 'notes';
   var KEEP_MONTHS = 3;
   var MAX_IMAGES = 4, MAX_IMAGE_SIDE = 1600;
 

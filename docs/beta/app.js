@@ -12,8 +12,9 @@
   var STORAGE_KEY = 'quickcal-beta.settings';
 
   // Notes (notes.js) are optional: every call goes through here, so an error there cannot break the calendar
+  // Notes are only offered in the installed app, where they belong (its own window, kept across restarts).
   function notes(fn, fallback) {
-    try { if (window.QuickCalNotes) return fn(window.QuickCalNotes); } catch (e) { if (window.console) console.error(e); }
+    try { if (window.QuickCalNotes && isInstalled()) return fn(window.QuickCalNotes); } catch (e) { if (window.console) console.error(e); }
     return fallback;
   }
   var DEFAULTS = {
@@ -514,6 +515,10 @@
   scalerEl.addEventListener('click', function (e) {
     var cell = e.target.closest && e.target.closest('.cell.pick');
     if (!cell || Date.now() - lastSwipe < 400) return;
+    if (!isInstalled()) {   // in a browser tab: as before, a click shows the holiday name
+      if (cell.dataset.tip) { clearTimeout(tipTimer); showTip(cell); }
+      return;
+    }
     hideTip();
     var d = cellDate(cell);
     if (d) notes(function (N) { N.openEditor(cell, d, cell.dataset.tip); });
@@ -798,6 +803,13 @@
     if (cell) notes(function (N) { N.openEditor(cell, d, cell.dataset.tip); });
   }
   function openNotesPage() {
+    $('notesList').innerHTML = '';
+    $('notesEmpty').classList.remove('hidden');
+    $('notesEmpty').textContent = isInstalled()
+      ? T('No notes yet. Click a day in the calendar to write one. Notes are kept for 3 months.',
+          'Ingen notater ennå. Klikk på en dag i kalenderen for å skrive et. Notater tas vare på i 3 måneder.')
+      : T('Notes are available when QuickCal is installed as an app. Install it under Settings → Install as app.',
+          'Notater er tilgjengelig når QuickCal er installert som app. Installer den under Innstillinger → Installer som app.');
     notes(function (N) { N.fillList($('notesList'), $('notesEmpty')); });
     $('notesDeleteAll').classList.toggle('hidden', !notes(function (N) { return N.count(); }, 0));
     showPage('notesPage');
@@ -1066,9 +1078,6 @@
     $('resetSizeBtn').textContent = T('Default window size', 'Standard vindusstørrelse');
     $('notesPageBtn').textContent = T('Notes', 'Notater');
     $('notesTitle').textContent = T('Notes', 'Notater');
-    $('notesEmpty').textContent = T(
-      'No notes yet. Click a day in the calendar to write one. Notes are kept for 3 months, only in this browser.',
-      'Ingen notater ennå. Klikk på en dag i kalenderen for å skrive et. Notater tas vare på i 3 måneder, bare i denne nettleseren.');
     $('notesDeleteAll').textContent = T('Delete all', 'Slett alle');
 
     $('welcomeTitle').textContent = T('Getting started with QuickCal', 'Kom i gang med QuickCal');
@@ -1099,7 +1108,8 @@
   // Start
   // =====================================================================================
 
-  // Beta: no service worker of its own (the live app's one already covers this folder), not installable
+  // Beta: installable as its own app ("QuickCal beta", see manifest.webmanifest). No service worker of its own:
+  // the live app's one already covers this folder.
 
   // Installed app: open with the same size as the Windows version (600 × 220), or the size
   // the user left it at. Browsers open new app windows very large, so this is done on every start.
@@ -1141,6 +1151,7 @@
     var onModeChange = function () {
       applyTexts();
       if (isInstalled()) {
+        startNotes();
         settings.appMaximized = false;
         startAppSizing();
         if (!settings.appAutostartShown) showInstalledPage();
@@ -1153,12 +1164,19 @@
   applyTexts();
   updateBadge(true);
   resetToToday();
-  notes(function (N) {
-    N.init({ T: T, render: rerender, showDate: showDate, isTouch: touchOnly, dayTitle: dayTitle });
-  });
+  var notesStarted = false;
+  function startNotes() {
+    if (notesStarted) return;
+    notes(function (N) {
+      notesStarted = true;
+      N.init({ T: T, render: rerender, showDate: showDate, isTouch: touchOnly, dayTitle: dayTitle });
+    });
+  }
+  startNotes();
 
   if (!isInstalled()) {
-    // Beta: straight to the calendar (the Getting started page is about installing, which the beta does not offer)
+    // In a browser tab: show the Getting started page on every visit, so it offers installation
+    showWelcome();
   } else if (!settings.appAutostartShown) {
     // Installed app: never the Getting started page on start (it would show after every reboot),
     // only once, on the first start as an app, the page about Edge's choices and pinning
