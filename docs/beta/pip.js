@@ -47,7 +47,14 @@
       frame.addEventListener('load', function () { try { frame.contentWindow.focus(); } catch (e) { /* ignore */ } });
       d.body.appendChild(frame);
       win.addEventListener('pagehide', closed);
-      win.addEventListener('message', function (e) { if (e.origin === location.origin && e.data === 'quickcal-pip-close') win.close(); });
+      // The green button: back to this window. A click in the floating window counts as a click here too, so
+      // the browser lets this window come to the front (it would otherwise stay behind the others).
+      win.addEventListener('message', function (e) {
+        if (e.origin !== location.origin || e.data !== 'quickcal-pip-close') return;
+        unshrink();
+        try { window.focus(); } catch (err) { /* ignore */ }
+        win.close();
+      });
       showCover();
       shrink();
     }).catch(function (e) { if (window.console) console.error(e); });
@@ -71,6 +78,7 @@
   function closed() {
     pipWin = null;
     unshrink();
+    try { window.focus(); } catch (e) { /* ignore */ }
     document.documentElement.classList.remove('pipActive');
     var c = document.getElementById('pipCover');
     if (c) c.remove();
