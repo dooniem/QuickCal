@@ -49,11 +49,28 @@
       win.addEventListener('pagehide', closed);
       win.addEventListener('message', function (e) { if (e.origin === location.origin && e.data === 'quickcal-pip-close') win.close(); });
       showCover();
+      shrink();
     }).catch(function (e) { if (window.console) console.error(e); });
+  }
+
+  // Installed app: make this window as small as the browser allows while the calendar floats, and give
+  // it its size back afterwards. A web page cannot minimize its own window, and a browser tab cannot be resized.
+  var savedSize = null;
+  function shrink() {
+    if (!installed()) return;
+    savedSize = { w: window.outerWidth, h: window.outerHeight };
+    try { window.resizeTo(1, 1); } catch (e) { savedSize = null; }
+  }
+  function unshrink() {
+    if (!savedSize) return;
+    var s = savedSize;
+    savedSize = null;
+    try { window.resizeTo(s.w, s.h); } catch (e) { /* ignore */ }
   }
 
   function closed() {
     pipWin = null;
+    unshrink();
     document.documentElement.classList.remove('pipActive');
     var c = document.getElementById('pipCover');
     if (c) c.remove();
