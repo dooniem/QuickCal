@@ -1206,10 +1206,10 @@ window.QuickCalNotes = (function () {
   // (Mon-Thu dragged down two rows = Mon-Thu in three weeks). With Ctrl held it grows over every day instead.
   function target(d, hk) {
     var s = d.s, e = d.e, w0 = mondayOf(d.s), wk = mondayOf(hk), blocks = null;
-    if (d.mode !== 'move' && !d.ctrl && w0 === mondayOf(d.e) && (d.mode === 'end' ? wk > w0 : wk < w0)) {
+    if (d.mode !== 'move' && !d.ctrl && w0 === mondayOf(d.e) && wk !== w0) {   // either edge, up or down
       var c0 = weekday(d.s), c1 = weekday(d.e);
       if (d.mode === 'end') c1 = Math.max(c0, weekday(hk)); else c0 = Math.min(c1, weekday(hk));
-      var rows = Math.min(Math.abs(daysBetween(w0, wk)) / 7, MAX_COPY_WEEKS), step = d.mode === 'end' ? 7 : -7;
+      var rows = Math.min(Math.abs(daysBetween(w0, wk)) / 7, MAX_COPY_WEEKS), step = wk > w0 ? 7 : -7;
       blocks = [];
       for (var i = 0; i <= rows; i++) blocks.push({ s: addDays(w0, i * step + c0), e: addDays(w0, i * step + c1) });
       s = blocks[0].s; e = blocks[0].e;
