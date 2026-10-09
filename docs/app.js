@@ -9,6 +9,9 @@
   // =====================================================================================
 
   var STORAGE_KEY = 'quickcal.settings';
+
+  // "Always on top" (pip.js) shows this page in a small floating window, opened with ?pip
+  var PIP = /[?&]pip(=|&|$)/.test(location.search);
   var DEFAULTS = {
     language: 'UseSystemLanguage', // 'English' | 'Norwegian' | 'UseSystemLanguage'
     showHolidays: true,
@@ -319,6 +322,7 @@
   var welcomeFromSettings = false;
 
   function isMaximized() {
+    if (PIP) return false;
     return window.outerWidth >= screen.availWidth - 16 && window.outerHeight >= screen.availHeight - 16;
   }
   function isCalendarPage(id) { return id === 'monthView' || id === 'yearView'; }
@@ -355,8 +359,9 @@
       var box = e.parentElement, page = $(e.closest('.page').id), colWidth = (+page.dataset.w - 16) / 3;
       var width = colWidth;
       if (box.classList.contains('wide')) {
-        var button = box.parentElement.querySelector('.linkBox');
-        width = colWidth * 2 + 8 - ((button && button.offsetWidth) || 75) - 6;
+        var buttons = 0;   // Settings, and "Always on top" when it is shown
+        Array.prototype.forEach.call(box.parentElement.querySelectorAll('.linkBox'), function (b) { if (b.offsetWidth) buttons += b.offsetWidth + 4; });
+        width = colWidth * 2 + 8 - (buttons || 79) - 6;
       }
       var keys = e.querySelectorAll('.spaceKey').length * 3 + e.querySelectorAll('.arrowKey').length * 1.4;
       var text = e.textContent + new Array(Math.ceil(keys) + 1).join('\u2003');   // room for the keys
@@ -547,9 +552,12 @@
     closePopups();
     var max = isMaximized();
     // Installed app: remember the size, like the Windows version does
-    if (appSizeReady && isInstalled()) {
+    // (not while "Always on top" has shrunk this window, see pip.js)
+    var floating = function () { return document.documentElement.classList.contains('pipActive'); };
+    if (appSizeReady && isInstalled() && !floating()) {
       clearTimeout(saveSizeTimer);
       saveSizeTimer = setTimeout(function () {
+        if (floating()) return;
         settings.appMaximized = isMaximized();
         if (!settings.appMaximized) settings.appSize = { w: window.innerWidth, h: window.innerHeight };
         saveSettings();
@@ -1079,7 +1087,14 @@
   updateBadge(true);
   resetToToday();
 
-  if (!isInstalled()) {
+  // For pip.js, which brings the calendar back here when the floating window closes
+  window.QuickCalApp = {
+    refresh: function () { if (isCalendarPage(currentPage)) resetToToday(); }
+  };
+
+  if (PIP) {
+    document.documentElement.classList.add('pip');   // the floating window: just the calendar
+  } else if (!isInstalled()) {
     // In a browser tab: show the Getting started page on every visit, so it offers installation
     showWelcome();
   } else if (!settings.appAutostartShown) {

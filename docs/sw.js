@@ -1,11 +1,12 @@
 // QuickCal service worker: makes the app work offline and installable.
 // Bump VERSION when you publish a new version, so users get the new files.
-const VERSION = 'quickcal-v2.0.19';
+const VERSION = 'quickcal-v2.0.20';
 const FILES = [
   './',
   './index.html',
   './styles.css',
   './app.js',
+  './pip.js',
   './manifest.webmanifest',
   './assets/gold_texture.jpg',
   './icons/icon-192.png',
