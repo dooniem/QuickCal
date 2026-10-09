@@ -737,7 +737,7 @@
   // =====================================================================================
 
   function openSubPage(id) {
-    subPageReturn = currentPage === 'welcomePage' || currentPage === 'installedPage' ? currentPage : 'settingsPage';
+    subPageReturn = currentPage === 'welcomePage' || currentPage === 'installedPage' || currentPage === 'notesPage' ? currentPage : 'settingsPage';
     fillHelpPages();
     showPage(id);
   }
@@ -826,17 +826,24 @@
   function openNotesPage() {
     $('notesList').innerHTML = '';
     $('notesEmpty').classList.remove('hidden');
-    $('notesEmpty').textContent = isInstalled()
-      ? T('No notes yet. Click a day in the calendar to write one. Notes are kept for 3 months.',
-          'Ingen notater ennå. Klikk på en dag i kalenderen for å skrive et. Notater tas vare på i 3 måneder.')
-      : T('Notes are available when QuickCal is installed as an app. Install it under Settings → Install as app.',
-          'Notater er tilgjengelig når QuickCal er installert som app. Installer den under Innstillinger → Installer som app.');
+    var installed = isInstalled();
+    $('notesEmpty').textContent = installed
+      ? T('No notes yet. Click a day in the calendar and then ✎ to write one. Notes are kept for 3 months.',
+          'Ingen notater ennå. Klikk på en dag i kalenderen og deretter ✎ for å skrive et. Notater tas vare på i 3 måneder.')
+      : touchOnly()
+        ? T('Write short notes on days: tap a day and then ✎. Pick a color and add pictures. Notes are kept for 3 months, on this device only.',
+            'Skriv korte notater på dager: trykk på en dag og deretter ✎. Velg farge og legg til bilder. Notatene tas vare på i 3 måneder, bare på denne enheten.')
+        : T('Write short notes on days: click a day and then ✎. Pick a color, paste pictures, and hover over the day to read the note. Notes are kept for 3 months, on this device only.',
+            'Skriv korte notater på dager: klikk på en dag og deretter ✎. Velg farge, lim inn bilder, og hold musen over dagen for å lese notatet. Notatene tas vare på i 3 måneder, bare på denne enheten.');
+    $('notesInstallInfo').classList.toggle('hidden', installed);
+    $('notesInstallBtn').classList.toggle('hidden', installed);
     notes(function (N) { N.fillList($('notesList'), $('notesEmpty')); });
     $('notesDeleteAll').classList.toggle('hidden', !notes(function (N) { return N.count(); }, 0));
     showPage('notesPage');
   }
-  // Notepad button next to Settings (installed app only, where notes are available)
+  // Notepad button next to Settings. Before installing, it leads to a page that explains notes.
   ['notesBtn1', 'notesBtn2'].forEach(function (id) { $(id).addEventListener('click', openNotesPage); });
+  $('notesInstallBtn').addEventListener('click', runInstall);
   $('notesBack').addEventListener('click', showCalendar);
   $('notesDeleteAll').addEventListener('click', function () {
     if (!confirm(T('Delete all notes?', 'Slette alle notater?'))) return;
@@ -1101,13 +1108,17 @@
     ['notesBtn1', 'notesBtn2'].forEach(function (id) {
       $(id).title = T('Notes', 'Notater');
       $(id).setAttribute('aria-label', $(id).title);
-      $(id).classList.toggle('hidden', !isInstalled());
     });
+    $('notesInstallInfo').textContent = mobileOS()
+      ? T('Available when QuickCal is added to the home screen.', 'Tilgjengelig når QuickCal er lagt på Hjem-skjermen.')
+      : T('Available when QuickCal is installed as an app.', 'Tilgjengelig når QuickCal er installert som app.');
+    $('notesInstallBtn').textContent = mobileOS() ? T('Show me how', 'Vis meg hvordan') : T('Install as app', 'Installer som app');
     $('notesTitle').textContent = T('Notes', 'Notater');
     $('notesDeleteAll').textContent = T('Delete all', 'Slett alle');
 
     $('welcomeTitle').textContent = T('Getting started with QuickCal', 'Kom i gang med QuickCal');
     $('wInstallText').textContent = T('Install QuickCal as an app', 'Installer QuickCal som app');
+    var notesLine = el('small', 'wNote', T('Notes on days are available in the installed app.', 'Notater på dager er tilgjengelig i den installerte appen.'));
     $('wBadgeText').innerHTML = '';
     $('wBadgeText').appendChild(document.createTextNode(T('Week number on the taskbar', 'Ukenummeret på oppgavelinjen')));
     $('wBadgeText').appendChild(document.createElement('br'));
@@ -1118,6 +1129,8 @@
     // Phones and tablets: "add to the home screen", and no taskbar or autostart rows
     var mobile = mobileOS();
     if (mobile) $('wInstallText').textContent = T('Add QuickCal to the home screen', 'Legg QuickCal på Hjem-skjermen');
+    $('wInstallText').appendChild(document.createElement('br'));
+    $('wInstallText').appendChild(notesLine);
     $('wBadgeText').parentNode.classList.toggle('hidden', !!mobile);
     $('wAutostartText').parentNode.classList.toggle('hidden', !!mobile);
     $('wAutostartBtn').textContent = T('Show me how', 'Vis meg hvordan');

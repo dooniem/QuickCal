@@ -181,3 +181,6 @@ button { font-family: inherit; color: inherit; }
 .bottomRow .tagline { line-height: 1.25; padding-bottom: 2px; }
 .bottomRow .right { gap: 4px; padding-bottom: 2px; }
 .linkBox.notesBtn { padding: 0 3px; }
+.wText small.wNote { font-size: 10px; color: #555; font-weight: 400; }
+.notesInstallInfo { font-weight: 600; }
+#notesPage .btn.inline { margin-left: 0; }
