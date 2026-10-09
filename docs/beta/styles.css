@@ -238,6 +238,13 @@ html.pipActive #stage { visibility: hidden; }
 .ncRow { display: flex; align-items: center; gap: 6px; }
 .ncRow input { width: 150px; font: inherit; font-size: 11.5px; height: 18px; padding: 0 4px; border: 1px solid #999; border-radius: 3px; box-sizing: border-box; }
 .btn.exportBtn.backupBtn { right: 105px; }
+/* Beta: picture filter, three steps: all (grey), with pictures (in color), without (struck through) */
+.notesPicsBtn { color: #777; }
+.notesPicsBtn .npHill, .notesPicsBtn .npSun { fill: #aaa; }
+.notesPicsBtn .npSlash { stroke: none; }
+.notesPicsBtn.pics-with .npHill { fill: #2e9e5b; }
+.notesPicsBtn.pics-with .npSun { fill: #e8a11e; }
+.notesPicsBtn.pics-without .npSlash { stroke: #c0392b; }
 .btn.exportBtn.restoreBtn { right: 60px; }
 /* Beta: repeating notes */
 .neBtn.on { background: #dbe8ff; box-shadow: inset 0 0 0 1px #143275; }
