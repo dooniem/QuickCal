@@ -1038,8 +1038,8 @@ window.QuickCalNotes = (function () {
       }
       if (n.end && !n.repeat) { var e = parseKey(n.end); dateCell.appendChild(el('span', 'noteEnd', ' → ' + e.getDate() + '.' + (e.getMonth() + 1) + '.')); }
       row.appendChild(dateCell);
-      var first = n.text.trim().split('\n')[0] || (n.images ? T('(picture)', '(bilde)') : '');
-      row.appendChild(el('span', 'noteFirst', first));
+      var all = n.text.replace(/^\s*\n|\s+$/g, '') || (n.images ? T('(picture)', '(bilde)') : '');   // the whole note, every line
+      row.appendChild(el('span', 'noteFirst', all));
       var tasks = n.text.match(/^[☐☑]/gm);
       if (tasks) row.appendChild(el('span', 'noteTasks', '☑ ' + tasks.filter(function (t) { return t === '☑'; }).length + '/' + tasks.length));
       if (n.images) row.appendChild(el('span', 'noteImgs', '🖼' + (n.images > 1 ? n.images : '')));

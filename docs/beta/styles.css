@@ -163,7 +163,8 @@ button { font-family: inherit; color: inherit; }
 .noteDot { width: 14px; height: 14px; border-radius: 50%; color: #fff; font-size: 9px; font-weight: 700; line-height: 14px; text-align: center; flex: none; box-sizing: border-box; }
 .noteDot.plain { border: 1px solid #888; background: #fff; color: #555; line-height: 12px; }
 .noteDate { white-space: nowrap; }
-.noteFirst { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #333; }
+.noteFirst { white-space: pre-wrap; overflow-wrap: anywhere; min-width: 0; color: #333; }
+.noteRow { align-items: start; }
 .noteRemove { background: transparent; border: 0; cursor: pointer; font-size: 12px; padding: 0 2px; }
 .notesList { margin-top: 8px; }
 .notePeek { position: fixed; z-index: 19; display: flex; align-items: center; gap: 5px; max-width: min(260px, calc(100vw - 16px)); background: #fff;
