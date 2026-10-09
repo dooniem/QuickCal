@@ -611,6 +611,19 @@ namespace QuickCal
             ShowCalendarView();
         }
 
+        /// <summary>Language applies at once, so the settings page itself switches language.</summary>
+        private void LanguageComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (!IsLoaded || settingsManager == null || languageComboBox.SelectedIndex < 0) return;
+            var language = (CalendarLanguage)languageComboBox.SelectedIndex;
+            if (settingsManager.Values.Language == language) return;
+            settingsManager.Values.Language = language;
+            settingsManager.Save();
+            App.Current.OnSettingsChanged();
+            ApplyUiTexts();
+            UpdateDayLabels();
+        }
+
         private void NumberOfWeeks_PreviewTextInput(object sender, TextCompositionEventArgs e)
         {
             e.Handled = !e.Text.All(c => c >= '0' && c <= '3');

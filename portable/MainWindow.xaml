@@ -473,7 +473,7 @@
                         </Grid.ColumnDefinitions>
                         <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Top">
                             <TextBlock x:Name="languageLabel" Text="Calendar Language" Margin="5,5,10,0" Foreground="Black"/>
-                            <ComboBox x:Name="languageComboBox" HorizontalAlignment="Center" VerticalAlignment="Top" Height="22" Margin="6" FontSize="11" Padding="6,2,4,2" MinWidth="110">
+                            <ComboBox x:Name="languageComboBox" SelectionChanged="LanguageComboBox_SelectionChanged" HorizontalAlignment="Center" VerticalAlignment="Top" Height="22" Margin="6" FontSize="11" Padding="6,2,4,2" MinWidth="110">
                                 <ComboBoxItem Content="English"/>
                                 <ComboBoxItem Content="Norsk"/>
                                 <ComboBoxItem x:Name="systemLanguageItem" Content="Use system language"/>
