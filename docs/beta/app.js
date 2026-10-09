@@ -13,8 +13,13 @@
 
   // Notes (notes.js) are optional: every call goes through here, so an error there cannot break the calendar
   // Notes are only offered in the installed app, where they belong (its own window, kept across restarts).
+  // Beta: "Always on top" (pip.js) shows this page in a small floating window, opened with ?pip
+  // (?pip=notes from the installed app, so notes work there too).
+  var PIP = /[?&]pip(=|&|$)/.test(location.search);
+  var PIP_NOTES = /[?&]pip=notes(&|$)/.test(location.search);
+  function notesHere() { return isInstalled() || PIP_NOTES; }
   function notes(fn, fallback) {
-    try { if (window.QuickCalNotes && isInstalled()) return fn(window.QuickCalNotes); } catch (e) { if (window.console) console.error(e); }
+    try { if (window.QuickCalNotes && notesHere()) return fn(window.QuickCalNotes); } catch (e) { if (window.console) console.error(e); }
     return fallback;
   }
   var DEFAULTS = {
@@ -333,6 +338,7 @@
   var welcomeFromSettings = false;
 
   function isMaximized() {
+    if (PIP) return false;
     return window.outerWidth >= screen.availWidth - 16 && window.outerHeight >= screen.availHeight - 16;
   }
   function isCalendarPage(id) { return id === 'monthView' || id === 'yearView'; }
@@ -534,7 +540,7 @@
   scalerEl.addEventListener('click', function (e) {
     var cell = e.target.closest && e.target.closest('.cell.pick');
     if (!cell || Date.now() - lastSwipe < 400) return;
-    if (!isInstalled()) {   // in a browser tab: as before, a click shows the holiday name
+    if (!notesHere()) {   // in a browser tab: as before, a click shows the holiday name
       if (cell.dataset.tip) { clearTimeout(tipTimer); showTip(cell); }
       return;
     }
@@ -544,7 +550,7 @@
   });
   scalerEl.addEventListener('dblclick', function (e) {
     var cell = e.target.closest && e.target.closest('.cell.pick');
-    if (!cell || !isInstalled() || Date.now() - ignoreDblClick < 600) return;
+    if (!cell || !notesHere() || Date.now() - ignoreDblClick < 600) return;
     hideTip();
     var d = cellDate(cell);
     if (d) notes(function (N) { N.openEditor(cell, d, cell.dataset.tip); });
@@ -1213,7 +1219,17 @@
   }
   startNotes();
 
-  if (!isInstalled()) {
+  // Beta: for pip.js, which brings the calendar back here when the floating window closes
+  window.QuickCalApp = {
+    refresh: function () {
+      notes(function (N) { N.reload(); });
+      if (isCalendarPage(currentPage)) resetToToday();
+    }
+  };
+
+  if (PIP) {
+    document.documentElement.classList.add('pip');   // the floating window: just the calendar
+  } else if (!isInstalled()) {
     // In a browser tab: show the Getting started page on every visit, so it offers installation
     showWelcome();
   } else if (!settings.appAutostartShown) {

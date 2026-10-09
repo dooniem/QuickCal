@@ -437,6 +437,10 @@ window.QuickCalNotes = (function () {
     fillList: fillList,
     deleteAll: deleteAll,
     count: function () { return Object.keys(index).length; },
+    reload: function () {   // notes may have been changed in the "Always on top" window
+      if (!available) return Promise.resolve();
+      return getAll().then(function (all) { index = {}; all.forEach(remember); deps.render(); });
+    },
     removeOld: function () { return available ? removeOld() : Promise.resolve(); }
   };
 })();
