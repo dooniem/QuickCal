@@ -870,6 +870,8 @@
     $('notesDeleteAll').classList.toggle('hidden', !any);
     $('notesTools').classList.toggle('hidden', !any);   // search and color filter
     $('notesExport').classList.toggle('hidden', !any);
+    $('notesBackup').classList.toggle('hidden', !any);
+    $('notesRestore').classList.toggle('hidden', !notes(function () { return true; }, false));   // also when empty: that is when it is needed
     $('notesFilterMenu').classList.add('hidden');
     $('notesColorsMenu').classList.add('hidden');
     showPage('notesPage');
@@ -1252,7 +1254,7 @@
     notes(function (N) {
       notesStarted = true;
       N.init({ T: T, render: rerender, showDate: showDate, isTouch: touchOnly, dayTitle: dayTitle, isoWeek: isoWeek });
-      N.listTools({ search: $('notesSearch'), filterBtn: $('notesFilterBtn'), filterMenu: $('notesFilterMenu'), colorsBtn: $('notesColorsBtn'), colorsMenu: $('notesColorsMenu'), exportBtn: $('notesExport'), list: $('notesList'), empty: $('notesEmpty') });
+      N.listTools({ search: $('notesSearch'), filterBtn: $('notesFilterBtn'), filterMenu: $('notesFilterMenu'), colorsBtn: $('notesColorsBtn'), colorsMenu: $('notesColorsMenu'), exportBtn: $('notesExport'), backupBtn: $('notesBackup'), restoreBtn: $('notesRestore'), restoreFile: $('notesRestoreFile'), onRestored: openNotesPage, list: $('notesList'), empty: $('notesEmpty') });
     });
   }
   startNotes();
