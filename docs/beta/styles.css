@@ -239,3 +239,14 @@ html.pipActive #stage { visibility: hidden; }
 .ncRow input { width: 150px; font: inherit; font-size: 11.5px; height: 18px; padding: 0 4px; border: 1px solid #999; border-radius: 3px; box-sizing: border-box; }
 .btn.exportBtn.backupBtn { right: 105px; }
 .btn.exportBtn.restoreBtn { right: 60px; }
+/* Beta: repeating notes */
+.neBtn.on { background: #dbe8ff; box-shadow: inset 0 0 0 1px #143275; }
+.neRepeat { margin-top: 5px; padding: 4px 5px; border: 1px solid #ccc; border-radius: 3px; background: #f7f7f7; font-size: 11.5px; display: flex; flex-direction: column; gap: 3px; }
+.nrLine { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.nrLine select, .nrNum { font: inherit; font-size: 11.5px; height: 20px; border: 1px solid #999; border-radius: 3px; background: #fff; padding: 0 2px; }
+.nrNum { width: 42px; }
+.nrDay { width: 26px; height: 20px; border: 1px solid #999; border-radius: 3px; background: #fff; font: inherit; font-size: 11px; padding: 0; cursor: pointer; }
+.nrDay.on { background: #143275; border-color: #143275; color: #fff; }
+.nrMuted { color: #777; }
+.nrNext { color: #333; font-size: 11px; display: block; }
+.noteEditor { max-height: calc(100vh - 8px); overflow-y: auto; box-sizing: border-box; }

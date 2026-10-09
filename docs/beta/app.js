@@ -194,8 +194,18 @@
   }
 
   var holidays = {};
+  // Work days for repeating notes ("4 work days after"): not a weekend and not a red day in the calendar
+  var offDays = {};
+  function isOffDay(d) {
+    var wd = d.getDay(), y = d.getFullYear();
+    if (wd === 0 || wd === 6) return true;
+    if (!offDays[y]) offDays[y] = holidaysForYear(y);
+    return dateKey(d) in offDays[y];
+  }
   function loadHolidays(years) {
     holidays = {};
+    offDays = {};   // settings may have changed (Easter week, summer weeks)
+    notes(function (N) { N.invalidate(); });
     if (!settings.showHolidays) return;
     years.forEach(function (y) {
       var m = holidaysForYear(y);
@@ -1253,7 +1263,7 @@
     if (notesStarted) return;
     notes(function (N) {
       notesStarted = true;
-      N.init({ T: T, render: rerender, showDate: showDate, isTouch: touchOnly, dayTitle: dayTitle, isoWeek: isoWeek });
+      N.init({ T: T, render: rerender, showDate: showDate, isTouch: touchOnly, dayTitle: dayTitle, isoWeek: isoWeek, isOffDay: isOffDay });
       N.listTools({ search: $('notesSearch'), filterBtn: $('notesFilterBtn'), filterMenu: $('notesFilterMenu'), colorsBtn: $('notesColorsBtn'), colorsMenu: $('notesColorsMenu'), exportBtn: $('notesExport'), backupBtn: $('notesBackup'), restoreBtn: $('notesRestore'), restoreFile: $('notesRestoreFile'), onRestored: openNotesPage, list: $('notesList'), empty: $('notesEmpty') });
     });
   }

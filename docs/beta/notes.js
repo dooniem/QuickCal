@@ -94,26 +94,154 @@ window.QuickCalNotes = (function () {
   function putNote(n) { return tx('readwrite', function (s) { s.put(n); }); }
   function deleteNote(k) { return tx('readwrite', function (s) { s.delete(k); }); }
 
-  function isEmpty(n) { return !n || (!n.text.trim() && !n.color && !(n.images && n.images.length)); }
+  function isEmpty(n) { return !n || (!n.text.trim() && !n.color && !(n.images && n.images.length) && !n.repeat); }
   function remember(n) {
     if (isEmpty(n)) delete index[n.date];
-    else index[n.date] = { text: n.text, color: n.color, images: (n.images || []).length, end: n.endDate && n.endDate > n.date ? n.endDate : '' };
+    else index[n.date] = { text: n.text, color: n.color, images: (n.images || []).length, end: n.endDate && n.endDate > n.date ? n.endDate : '', repeat: n.repeat || null };
     rebuildCover();
   }
   // Multi-day notes: which note (by its first day) covers each day
   function rebuildCover() {
     cover = {};
+    recurByYear = {};
     Object.keys(index).forEach(function (k) {
+      if (index[k].repeat) return;   // repeating notes: see at() below
       var end = index[k].end || k, d = k;
       for (var i = 0; i < MAX_SPAN_DAYS && d <= end; i++, d = addDays(d, 1)) if (!cover[d]) cover[d] = k;
     });
   }
-  function noteStart(date) { return cover[key(date)] || null; }
+  function noteStart(date) { var a = at(key(date)); return a ? a.k : null; }
   // Last day a note starting on k may run to: not into the next note, and not longer than MAX_SPAN_DAYS
   function maxEnd(k) {
     var next = Object.keys(index).filter(function (s) { return s > k; }).sort()[0];
     var max = addDays(k, MAX_SPAN_DAYS - 1);
     return next && addDays(next, -1) < max ? addDays(next, -1) : max;
+  }
+
+  // ---------- Repeating notes ----------
+  // A repeating note is stored once, on the day it starts from, with a rule:
+  //   { freq: 'day'|'week'|'month'|'year', every: n, days: [weekdays 0-6] (week),
+  //     by: 'date'|'nth' (month), nth: 1-4 or -1 for the last, wd: weekday (nth),
+  //     shiftUnit: ''|'days'|'work'|'next', shift: n (days/work days, may be negative), shiftWd: weekday (next),
+  //     until: 'YYYY-MM-DD' or '' }
+  // Example: "4 work days after the last Sunday of the month" = month, nth -1, wd 0, work, 4.
+  // The days it falls on are worked out when drawn (one year at a time) and are never stored.
+  var recurByYear = {};
+  function D(y, m, d) { return new Date(y, m, d); }
+  function plus(d, n) { return D(d.getFullYear(), d.getMonth(), d.getDate() + n); }
+  function daysIn(y, m) { return D(y, m + 1, 0).getDate(); }
+  function daysBetween(a, b) { return Math.round((parseKey(b) - parseKey(a)) / 86400000); }
+  function nthWeekday(y, m, nth, wd) {
+    if (nth < 0) { var last = D(y, m, daysIn(y, m)); return plus(last, -((last.getDay() - wd + 7) % 7)); }
+    var first = D(y, m, 1);
+    return plus(first, (wd - first.getDay() + 7) % 7 + (nth - 1) * 7);
+  }
+  function offDay(d) { try { return deps.isOffDay ? deps.isOffDay(d) : d.getDay() % 6 === 0; } catch (e) { return false; } }
+  function shifted(d, r) {
+    var n = r.shift | 0;
+    if (r.shiftUnit === 'days') return plus(d, n);
+    if (r.shiftUnit === 'work') {
+      if (!n) { for (var g = 0; g < 30 && offDay(d); g++) d = plus(d, 1); return d; }   // 0: the next work day if not one
+      var step = n < 0 ? -1 : 1;
+      for (var c = Math.abs(n), i = 0; c > 0 && i < 400; i++) { d = plus(d, step); if (!offDay(d)) c--; }
+      return d;
+    }
+    if (r.shiftUnit === 'next') { var x = plus(d, 1); while (x.getDay() !== (r.shiftWd | 0)) x = plus(x, 1); return x; }
+    return d;
+  }
+  /** The days (keys) a repeating note starting on k begins on, from..to */
+  function occurrences(k, r, from, to) {
+    var S = parseKey(k), out = [], every = Math.max(1, r.every | 0);
+    var last = r.until && r.until < to ? r.until : to;
+    if (last < from || last < k) return out;
+    var stop = addDays(last, 70);   // a base day this far after may still be moved back into range
+    var guard = 0;
+    function push(base) {
+      var o = key(shifted(base, r));
+      if (o >= k && o >= from && o <= last && out.indexOf(o) < 0) out.push(o);
+    }
+    var skip = Math.max(0, daysBetween(k, from) - 70);   // jump ahead to near 'from'
+    if (r.freq === 'day') {
+      for (var i = Math.floor(skip / every); guard++ < 5000; i++) {
+        var d = plus(S, i * every); if (key(d) > stop) break; push(d);
+      }
+    } else if (r.freq === 'week') {
+      var mon = plus(S, -((S.getDay() + 6) % 7)), days = (r.days && r.days.length ? r.days : [S.getDay()]);
+      for (var w = Math.floor(skip / 7 / every) * every; guard++ < 2000; w += every) {
+        var wk = plus(mon, w * 7);
+        if (key(wk) > stop) break;
+        days.forEach(function (wd) { push(plus(wk, (wd + 6) % 7)); });
+      }
+    } else if (r.freq === 'month') {
+      for (var m = 0; guard++ < 2000; m += every) {
+        var y = S.getFullYear(), mo = S.getMonth() + m;
+        var first = D(y, mo, 1);
+        if (key(first) > stop) break;
+        var base = r.by === 'nth' ? nthWeekday(first.getFullYear(), first.getMonth(), r.nth | 0 || 1, r.wd | 0)
+                                  : D(first.getFullYear(), first.getMonth(), Math.min(S.getDate(), daysIn(first.getFullYear(), first.getMonth())));
+        push(base);
+      }
+    } else if (r.freq === 'year') {
+      for (var yr = 0; guard++ < 500; yr += every) {
+        var yy = S.getFullYear() + yr;
+        var b = D(yy, S.getMonth(), Math.min(S.getDate(), daysIn(yy, S.getMonth())));
+        if (key(b) > stop) break;
+        push(b);
+      }
+    }
+    return out.sort();
+  }
+  function recurMap(y) {
+    if (recurByYear[y]) return recurByYear[y];
+    var map = {}, from = y + '-01-01', to = y + '-12-31';
+    Object.keys(index).sort().forEach(function (k) {
+      var n = index[k]; if (!n.repeat) return;
+      var dur = n.end ? daysBetween(k, n.end) : 0;
+      occurrences(k, n.repeat, addDays(from, -dur), to).forEach(function (o) {
+        var e = addDays(o, dur);
+        for (var d = o; d <= e; d = addDays(d, 1)) if (d >= from && d <= to && !cover[d] && !map[d]) map[d] = { k: k, s: o, e: e };
+      });
+    });
+    return (recurByYear[y] = map);
+  }
+  /** The note on a day: { k: the day it is stored on, s/e: first/last day of this showing } */
+  function at(dk) {
+    var k = cover[dk];
+    if (k) return { k: k, s: k, e: index[k].end || k };
+    return recurMap(dk.slice(0, 4))[dk] || null;
+  }
+  function invalidate() { recurByYear = {}; }
+
+  var WD_NO = ['søndag', 'mandag', 'tirsdag', 'onsdag', 'torsdag', 'fredag', 'lørdag'];
+  var WD_EN = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  function wdName(i) { return T(WD_EN[i], WD_NO[i]); }
+  function wdShort(i) { return T(WD_EN[i].slice(0, 2), WD_NO[i].slice(0, 2)); }
+  var NTH_NO = { 1: 'første', 2: 'andre', 3: 'tredje', 4: 'fjerde', '-1': 'siste' };
+  var NTH_EN = { 1: 'first', 2: 'second', 3: 'third', 4: 'fourth', '-1': 'last' };
+  function shortDate(k) { var d = parseKey(k); return wdShort(d.getDay()) + '. ' + d.getDate() + '.' + (d.getMonth() + 1) + '.'; }
+  /** "Every month, last Sunday + 4 work days" */
+  function summary(k, r) {
+    if (!r) return '';
+    var S = parseKey(k), every = Math.max(1, r.every | 0), t;
+    if (r.freq === 'day') t = every > 1 ? T('Every ' + every + ' days', 'Hver ' + every + '. dag') : T('Every day', 'Hver dag');
+    else if (r.freq === 'week') {
+      t = (every > 1 ? T('Every ' + every + ' weeks', 'Hver ' + every + '. uke') : T('Every week', 'Hver uke')) + ' ' + T('on', 'på') + ' ' +
+        (r.days && r.days.length ? r.days : [S.getDay()]).slice().sort(function (a, b) { return (a + 6) % 7 - (b + 6) % 7; }).map(wdShort).join(', ');
+    } else if (r.freq === 'month') {
+      t = every > 1 ? T('Every ' + every + ' months', 'Hver ' + every + '. måned') : T('Every month', 'Hver måned');
+      t += r.by === 'nth' ? ', ' + T(NTH_EN[r.nth] + ' ' + wdName(r.wd), NTH_NO[r.nth] + ' ' + wdName(r.wd)) : ' ' + T('on the ' + S.getDate() + '.', 'den ' + S.getDate() + '.');
+    } else t = (every > 1 ? T('Every ' + every + ' years', 'Hvert ' + every + '. år') : T('Every year', 'Hvert år')) + ' ' + S.getDate() + '.' + (S.getMonth() + 1) + '.';
+    var n = r.shift | 0;
+    if (r.shiftUnit === 'days' && n) t += ' ' + (n > 0 ? '+ ' : '− ') + Math.abs(n) + ' ' + T(Math.abs(n) === 1 ? 'day' : 'days', Math.abs(n) === 1 ? 'dag' : 'dager');
+    if (r.shiftUnit === 'work') t += n ? ' ' + (n > 0 ? '+ ' : '− ') + Math.abs(n) + ' ' + T(Math.abs(n) === 1 ? 'work day' : 'work days', Math.abs(n) === 1 ? 'arbeidsdag' : 'arbeidsdager')
+                                     : T(', next work day if a day off', ', neste arbeidsdag hvis fridag');
+    if (r.shiftUnit === 'next') t += T(', then the first ' + wdName(r.shiftWd) + ' after', ', så første ' + wdName(r.shiftWd) + ' etter');
+    if (r.until) t += T(', until ', ', til og med ') + shortDate(r.until);
+    return t;
+  }
+  function nextOccurrences(k, r, count) {
+    var today = key(new Date());
+    return occurrences(k, r, today, addDays(today, 3 * 366)).slice(0, count);
   }
 
   // Save, or delete when nothing is left. Asks the browser once to keep the data (not evict it).
@@ -129,7 +257,11 @@ window.QuickCalNotes = (function () {
     return putNote(n);
   }
 
-  function expired(n, limit) { return (n.endDate || n.date) < (limit || oldestKept()); }
+  function expired(n, limit) {
+    limit = limit || oldestKept();
+    if (n.repeat) return !!n.repeat.until && addDays(n.repeat.until, n.endDate ? daysBetween(n.date, n.endDate) : 0) < limit;
+    return (n.endDate || n.date) < limit;
+  }
   function removeOld() {
     var limit = oldestKept();
     return getAll().then(function (all) {
@@ -168,14 +300,15 @@ window.QuickCalNotes = (function () {
   // A note over several days looks like one piece: no line between its days in the same week (and month),
   // and the notepad icon only on its last day (in each month).
   function decorate(cell, date) {
-    var dk = key(date), sk = cover[dk], n = sk && index[sk];
+    var dk = key(date), a = at(dk), n = a && index[a.k];
     if (!n) return;
     cell.classList.add('note');
-    if (n.end) {
+    if (n.repeat) cell.classList.add('noteRepeat');
+    if (a.e !== a.s) {
       var lastOfMonth = new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate() === date.getDate();
-      if (dk !== sk && date.getDay() !== 1 && date.getDate() !== 1) cell.classList.add('noteJoinL');
-      if (dk !== n.end && date.getDay() !== 0 && !lastOfMonth) cell.classList.add('noteJoinR');
-      if (dk !== n.end && !lastOfMonth) cell.classList.add('noteNoIcon');
+      if (dk !== a.s && date.getDay() !== 1 && date.getDate() !== 1) cell.classList.add('noteJoinL');
+      if (dk !== a.e && date.getDay() !== 0 && !lastOfMonth) cell.classList.add('noteJoinR');
+      if (dk !== a.e && !lastOfMonth) cell.classList.add('noteNoIcon');
     }
     var hex = colorHex(n.color);
     if (hex && !cell.classList.contains('today') && !cell.classList.contains('holiday') && !cell.classList.contains('gold')) {
@@ -195,12 +328,13 @@ window.QuickCalNotes = (function () {
 
   /** Hover tooltip for a day with a note: the text (and the first image), under the holiday name if any. */
   function fillTip(tip, date, holidayText, onResize) {
-    var sk = noteStart(date), n = sk && index[sk];
+    var a = at(key(date)), sk = a && a.k, n = sk && index[sk];
     if (!n) return false;
     tip.innerHTML = '';
     tip.classList.add('noteTip');
     if (holidayText) tip.appendChild(el('div', 'tipHoliday', holidayText));
-    if (n.end) tip.appendChild(el('div', 'tipSpan', spanText(sk, n.end)));
+    if (a.e !== a.s) tip.appendChild(el('div', 'tipSpan', spanText(a.s, a.e)));
+    if (n.repeat) tip.appendChild(el('div', 'tipSpan', '↻ ' + summary(sk, n.repeat)));
     var text = n.text.trim();
     if (text) tip.appendChild(el('div', 'tipText', text.length > 400 ? text.slice(0, 400) + '…' : text));
     if (n.images) {
@@ -314,6 +448,8 @@ window.QuickCalNotes = (function () {
     row.appendChild(swatches);
     var check = el('button', 'neBtn neCheck', '☑'); check.title = T('Checklist: tick box on this line', 'Sjekkliste: avkrysningsboks på denne linjen');
     row.appendChild(check);
+    var rep = el('button', 'neBtn neRepeatBtn', '↻'); rep.title = T('Repeat', 'Gjenta');
+    row.appendChild(rep);
     var addImg = el('button', 'neBtn', '🖼'); addImg.title = T('Add picture (or paste with Ctrl+V)', 'Legg til bilde (eller lim inn med Ctrl+V)');
     var del = el('button', 'neBtn neDelete', '🗑'); del.title = T('Delete note', 'Slett notat');
     row.appendChild(addImg);
@@ -321,6 +457,8 @@ window.QuickCalNotes = (function () {
     box.appendChild(row);
     var file = el('input'); file.type = 'file'; file.accept = 'image/*'; file.multiple = true; file.hidden = true;
     box.appendChild(file);
+    var panel = el('div', 'neRepeat hidden');
+    box.appendChild(panel);
     var hint = el('div', 'neHint', deps.isTouch()
       ? T('Saved automatically. Kept for 3 months. ☑ makes a checklist: tap a box to tick it.',
           'Lagres automatisk. Tas vare på i 3 måneder. ☑ lager sjekkliste: trykk på en boks for å krysse av.')
@@ -328,7 +466,7 @@ window.QuickCalNotes = (function () {
           'Lagres automatisk. Lim inn bilder med Ctrl+V. Tas vare på i 3 måneder. ☑ lager sjekkliste: klikk på en boks for å krysse av. Ctrl+Enter lagrer og lukker.'));
     box.appendChild(hint);
 
-    var note = { date: k, text: '', color: '', images: [], endDate: '' };
+    var note = { date: k, text: '', color: '', images: [], endDate: '', repeat: null };
     editor = { box: box, note: note, timer: null, cell: cell };
     document.body.appendChild(box);
     position(box, cell);
@@ -421,10 +559,20 @@ window.QuickCalNotes = (function () {
     addImg.addEventListener('click', function () { file.click(); });
     file.addEventListener('change', function () { addFiles(file.files); file.value = ''; });
     del.addEventListener('click', function () {
-      note.text = ''; note.color = ''; note.images = [];
+      note.text = ''; note.color = ''; note.images = []; note.repeat = null;
       closeEditor();
     });
     x.addEventListener('click', closeEditor);
+    function showRepeat() {
+      rep.classList.toggle('on', !!note.repeat);
+      repeatPanel(panel, note, function () { showRepeat(); saveSoon(0); });
+      position(box, cell);
+    }
+    rep.addEventListener('click', function () {
+      panel.classList.toggle('hidden');
+      hint.classList.toggle('hidden', !panel.classList.contains('hidden'));   // room for the panel in a small window
+      if (!panel.classList.contains('hidden')) showRepeat(); else position(box, cell);
+    });
     // Ctrl+Enter: save and close (no new line in the text)
     box.addEventListener('keydown', function (e) {
       if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); e.stopPropagation(); closeEditor(); }
@@ -438,6 +586,8 @@ window.QuickCalNotes = (function () {
       if (saved) {
         note.color = saved.color || ''; note.images = saved.images || [];
         note.endDate = saved.endDate || ''; endInput.value = note.endDate || k;
+        note.repeat = saved.repeat || null;
+        rep.classList.toggle('on', !!note.repeat);
         note.text = (saved.text || '') + area.value;   // keep anything typed while loading
         area.value = note.text;
       }
@@ -446,11 +596,96 @@ window.QuickCalNotes = (function () {
     showColor();
   }
 
+  // The repeat panel in the editor: a few choices that read as a sentence, and the next days it gives
+  function repeatPanel(panel, note, changed) {
+    var r = note.repeat, S = parseKey(note.date);
+    panel.innerHTML = '';
+    function select(options, value, onChange, cls) {
+      var s = el('select', cls || '');
+      options.forEach(function (o) { var op = el('option', '', o[1]); op.value = String(o[0]); s.appendChild(op); });
+      s.value = String(value);
+      s.addEventListener('change', function () { onChange(s.value); });
+      return s;
+    }
+    function num(value, min, max, onChange) {
+      var i = el('input', 'nrNum'); i.type = 'number'; i.min = min; i.max = max; i.value = value;
+      i.addEventListener('change', function () {
+        var v = parseInt(i.value, 10); if (isNaN(v)) v = min > 0 ? min : 0;
+        v = Math.max(min, Math.min(max, v)); i.value = v; onChange(v);
+      });
+      return i;
+    }
+    function line(cls) { var l = el('div', 'nrLine' + (cls ? ' ' + cls : '')); panel.appendChild(l); return l; }
+    function set(field, v) { r[field] = v; changed(); }
+    var wds = [1, 2, 3, 4, 5, 6, 0];
+
+    var l1 = line();
+    l1.appendChild(el('span', '', T('Repeat', 'Gjenta')));
+    l1.appendChild(select([['', T('Never', 'Aldri')], ['day', T('Daily', 'Daglig')], ['week', T('Weekly', 'Ukentlig')],
+      ['month', T('Monthly', 'Månedlig')], ['year', T('Yearly', 'Årlig')]], r ? r.freq : '', function (v) {
+        note.repeat = v ? { freq: v, every: 1, days: [S.getDay()], by: 'date', nth: -1, wd: S.getDay(), shiftUnit: '', shift: 0, shiftWd: 4, until: '' } : null;
+        changed();
+      }));
+    if (!r) return;
+    l1.appendChild(el('span', '', T('every', 'hver')));
+    l1.appendChild(num(r.every || 1, 1, 99, function (v) { set('every', v); }));
+    l1.appendChild(el('span', '', r.every > 1
+      ? T({ day: 'days', week: 'weeks', month: 'months', year: 'years' }[r.freq], { day: '. dag', week: '. uke', month: '. måned', year: '. år' }[r.freq])
+      : T({ day: 'day', week: 'week', month: 'month', year: 'year' }[r.freq], { day: 'dag', week: 'uke', month: 'måned', year: 'år' }[r.freq])));
+
+    if (r.freq === 'week') {
+      var l2 = line();
+      wds.forEach(function (wd) {
+        var b = el('button', 'nrDay' + ((r.days || []).indexOf(wd) >= 0 ? ' on' : ''), wdShort(wd));
+        b.addEventListener('click', function () {
+          var d = (r.days || []).slice(), i = d.indexOf(wd);
+          if (i >= 0) { if (d.length > 1) d.splice(i, 1); } else d.push(wd);
+          set('days', d);
+        });
+        l2.appendChild(b);
+      });
+    }
+    if (r.freq === 'month') {
+      var l3 = line();
+      l3.appendChild(select([['date', T('on day ' + S.getDate(), 'på dag ' + S.getDate())], ['1', T('first', 'første')], ['2', T('second', 'andre')],
+        ['3', T('third', 'tredje')], ['4', T('fourth', 'fjerde')], ['-1', T('last', 'siste')]], r.by === 'nth' ? r.nth : 'date', function (v) {
+          if (v === 'date') r.by = 'date'; else { r.by = 'nth'; r.nth = parseInt(v, 10); }
+          changed();
+        }));
+      if (r.by === 'nth') l3.appendChild(select(wds.map(function (wd) { return [wd, wdName(wd)]; }), r.wd, function (v) { set('wd', parseInt(v, 10)); }));
+      l3.appendChild(el('span', '', T('in the month', 'i måneden')));
+    }
+
+    var l4 = line();
+    l4.appendChild(el('span', '', T('Move', 'Flytt')));
+    l4.appendChild(select([['', T('no', 'nei')], ['days', T('days', 'dager')], ['work', T('work days', 'arbeidsdager')],
+      ['next', T('to the first', 'til første')]], r.shiftUnit || '', function (v) { r.shiftUnit = v; changed(); }));
+    if (r.shiftUnit === 'days' || r.shiftUnit === 'work') l4.insertBefore(num(r.shift | 0, -60, 60, function (v) { set('shift', v); }), l4.lastChild);
+    if (r.shiftUnit === 'next') {
+      l4.appendChild(select(wds.map(function (wd) { return [wd, wdName(wd)]; }), r.shiftWd, function (v) { set('shiftWd', parseInt(v, 10)); }));
+      l4.appendChild(el('span', '', T('after', 'etter')));
+    }
+
+    var l5 = line();
+    l5.appendChild(el('span', '', T('Until', 'Til og med')));
+    var until = el('input', 'neEnd'); until.type = 'date'; until.min = note.date; until.value = r.until || '';
+    until.addEventListener('change', function () { set('until', until.value && until.value >= note.date ? until.value : ''); });
+    l5.appendChild(until);
+    if (!r.until) l5.appendChild(el('span', 'nrMuted', T('(no end)', '(uten slutt)')));
+
+    var next = nextOccurrences(note.date, r, 4);
+    var l6 = line('nrNext');
+    l6.textContent = '↻ ' + summary(note.date, r) + '. ' + (next.length
+      ? T('Next: ', 'Neste: ') + next.map(shortDate).join(', ')
+      : T('No more days.', 'Ingen flere dager.'));
+  }
+
   function flush() {
     if (!editor || !editor.note) return Promise.resolve();
     clearTimeout(editor.timer);
     var n = { date: editor.note.date, text: editor.note.text, color: editor.note.color, images: editor.note.images.slice() };
     if (editor.note.endDate) n.endDate = editor.note.endDate;
+    if (editor.note.repeat) n.repeat = editor.note.repeat;
     return save(n).then(deps.render, function () { deps.render(); });
   }
 
@@ -601,25 +836,25 @@ window.QuickCalNotes = (function () {
       all.forEach(function (n) { byDate[n.date] = n; });
       var maxPics = 0;
       keys.forEach(function (k) { maxPics = Math.max(maxPics, ((byDate[k] && byDate[k].images) || []).length); });
-      var head = [T('Date', 'Dato'), T('To', 'Til'), T('Day', 'Dag'), T('Week', 'Uke'), T('No.', 'Nr'), T('Color', 'Farge'), T('Note', 'Notat')];
+      var head = [T('Date', 'Dato'), T('To', 'Til'), T('Day', 'Dag'), T('Week', 'Uke'), T('No.', 'Nr'), T('Color', 'Farge'), T('Note', 'Notat'), T('Repeats', 'Gjentas')];
       for (var i = 0; i < maxPics; i++) head.push(T('Picture ', 'Bilde ') + (i + 1));
       var rows = [head], images = [], rowHeights = {}, jobs = [];
       keys.forEach(function (k, r) {
         var n = byDate[k] || { text: index[k].text, color: index[k].color, images: [] }, d = parseKey(k);
-        var row = [d, n.endDate ? parseKey(n.endDate) : '', cap(d.toLocaleDateString(lang(), { weekday: 'long' })), deps.isoWeek(d), colorNo(n.color), colorLabel(n.color), (n.text || '').trim()];
+        var row = [d, n.endDate ? parseKey(n.endDate) : '', cap(d.toLocaleDateString(lang(), { weekday: 'long' })), deps.isoWeek(d), colorNo(n.color), colorLabel(n.color), (n.text || '').trim(), summary(k, n.repeat)];
         for (var j = 0; j < maxPics; j++) row.push('');
         rows.push(row);
         (n.images || []).forEach(function (blob, j) {
           rowHeights[r + 1] = 90;
           jobs.push(picture(blob).then(function (p) {
-            if (p) images.push({ row: r + 1, col: 7 + j, data: p.data, type: p.type, w: p.w, h: p.h, name: k + ' ' + (j + 1) });
+            if (p) images.push({ row: r + 1, col: 8 + j, data: p.data, type: p.type, w: p.w, h: p.h, name: k + ' ' + (j + 1) });
           }));
         });
       });
       return Promise.all(jobs).then(function () {
-        var widths = [10, 10, 10, 6, 5, 14, 50];
+        var widths = [10, 10, 10, 6, 5, 14, 50, 24];
         for (var i = 0; i < maxPics; i++) widths.push(22);
-        var blob = window.QuickCalXlsx.write(rows, { sheet: T('Notes', 'Notater'), widths: widths, wrap: [6], images: images, rowHeights: rowHeights });
+        var blob = window.QuickCalXlsx.write(rows, { sheet: T('Notes', 'Notater'), widths: widths, wrap: [6, 7], images: images, rowHeights: rowHeights });
         return save.then(function (write) { return write(blob); });
       });
     }).catch(function (e) { if (window.console && !(e && e.name === 'AbortError')) console.error(e); })
@@ -653,7 +888,12 @@ window.QuickCalNotes = (function () {
       dot.title = colorLabel(n.color);
       row.appendChild(dot);
       var dateCell = el('span', 'noteDate', deps.dayTitle(d, true));
-      if (n.end) { var e = parseKey(n.end); dateCell.appendChild(el('span', 'noteEnd', ' → ' + e.getDate() + '.' + (e.getMonth() + 1) + '.')); }
+      if (n.repeat) {
+        var nx = nextOccurrences(k, n.repeat, 1)[0];
+        dateCell.textContent = '↻ ' + (nx ? deps.dayTitle(parseKey(nx), true) : deps.dayTitle(d, true));
+        dateCell.title = summary(k, n.repeat);
+      }
+      if (n.end && !n.repeat) { var e = parseKey(n.end); dateCell.appendChild(el('span', 'noteEnd', ' → ' + e.getDate() + '.' + (e.getMonth() + 1) + '.')); }
       row.appendChild(dateCell);
       var first = n.text.trim().split('\n')[0] || (n.images ? T('(picture)', '(bilde)') : '');
       row.appendChild(el('span', 'noteFirst', first));
@@ -794,6 +1034,7 @@ window.QuickCalNotes = (function () {
       if (!available) return Promise.resolve();
       return getAll().then(function (all) { index = {}; all.forEach(remember); rebuildCover(); deps.render(); });
     },
+    invalidate: invalidate,
     removeOld: function () { return available ? removeOld() : Promise.resolve(); }
   };
 })();
