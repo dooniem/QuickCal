@@ -17,6 +17,10 @@ Edge er anbefalt fordi den finnes på alle Windows-PC-er og gir appen et ryddig 
 
 Står det *Vis meg hvordan* i stedet for *Installer*, forklarer QuickCal stegene for nettleseren din.
 
+## iPhone, iPad og Android
+
+På iPhone og iPad finnes det ingen installeringsknapp. Åpne adressen i Safari eller Chrome, trykk **Del** ⬆ og velg **Legg til på Hjem-skjerm**. På Android åpner du menyen ⋮ og velger **Installer app** eller **Legg til på startsiden**. Fjern appen ved å holde fingeren på ikonet.
+
 ## Ukenummer på oppgavelinjen
 
 Når QuickCal er installert og åpen, vises ukenummeret som et lite merke på ikonet på oppgavelinjen. Minimer vinduet i stedet for å lukke det, så er merket alltid synlig. Med automatisk oppstart er det på plass hver gang du logger på.
