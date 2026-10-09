@@ -219,10 +219,9 @@ html.pipActive #stage { visibility: hidden; }
 .btn.exportBtn svg { width: 100%; height: 100%; }
 .btn.exportBtn:disabled { opacity: .4; cursor: default; }
 /* Beta: a note over several days looks like one piece */
-.cell.note.noteJoinR:not(.today):not(.holiday):not(.gold) { border-right-color: transparent; }
-.cell.note.noteJoinL:not(.today):not(.holiday):not(.gold) { border-left-color: transparent; }
-.cell.note.noteJoinR::before { right: -1px; }
-.cell.note.noteJoinL::before { left: -1px; }
+/* a light grey line between the days of one note (no black line, but still a visible day boundary) */
+.cell.note.noteJoinR:not(.today):not(.holiday):not(.gold) { border-right-color: #c8c8c8; }
+.cell.note.noteJoinL:not(.today):not(.holiday):not(.gold) { border-left-color: #c8c8c8; }
 .cell.note.noteNoIcon::after { display: none; }
 .neHead { flex-wrap: wrap; align-items: center; row-gap: 2px; }
 .neDash { font-weight: 600; }
