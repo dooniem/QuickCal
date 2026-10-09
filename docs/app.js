@@ -751,17 +751,14 @@
                  'Fest til oppgavelinjen: høyreklikk QuickCal-ikonet på oppgavelinjen og velg «Fest til oppgavelinjen».'));
     setList('installedSteps', steps);
     $('installedTip').textContent = edge
-      ? T('Clicked Allow too quickly? You can change the choices at any time:',
-          'Trykket du Tillat for fort? Du kan endre valgene når som helst:')
+      ? T('Clicked Allow too quickly? Change the choices at any time: ⋯ at the top right of this window → App settings ⚙.',
+          'Trykket du Tillat for fort? Endre valgene når som helst: ⋯ øverst til høyre i dette vinduet → Appinnstillinger ⚙.')
       : '';
-    $('installedChangeBtn').textContent = T('Change the choices', 'Endre valgene');
-    $('installedChangeBtn').classList.toggle('hidden', !edge);
     subPageReturn = 'calendar';
     showPage('installedPage');
     settings.appAutostartShown = true;
     saveSettings();
   }
-  $('installedChangeBtn').addEventListener('click', function () { openSubPage('autostartPage'); });
   $('installedOk').addEventListener('click', showCalendar);
 
   function setList(id, items) {
@@ -781,7 +778,10 @@
       $('installIntro').textContent = T(
         'A web page cannot uninstall itself, but it only takes a moment:',
         'En nettside kan ikke avinstallere seg selv, men det tar bare et øyeblikk:');
-      setList('installSteps', [
+      if (b === 'edge') {
+        setList('installSteps', [appMenuStep(),
+          T('Choose “App settings” ⚙, then “Uninstall”.', 'Velg «Appinnstillinger» ⚙ og deretter «Avinstaller».')]);
+      } else setList('installSteps', [
         T('Open the Windows Start menu, find QuickCal, right-click it and choose Uninstall.',
           'Åpne Start-menyen i Windows, finn QuickCal, høyreklikk og velg Avinstaller.'),
         b === 'chrome'
@@ -833,8 +833,16 @@
           'Da er ukenummeret på oppgavelinjen alltid oppdatert. QuickCal må være installert som app først.');
     var appsUrl = b === 'chrome' ? 'chrome://apps' : 'edge://apps';
     $('copyAppsBtn').textContent = T('Copy ', 'Kopier ') + appsUrl;
-    $('copyAppsBtn').classList.toggle('hidden', b === 'other');
-    if (b === 'chrome') {
+    // In the installed Edge app the ⋯ menu in the title bar leads straight to the app's settings
+    var viaAppMenu = isInstalled() && b === 'edge';
+    $('copyAppsBtn').classList.toggle('hidden', b === 'other' || viaAppMenu);
+    if (viaAppMenu) {
+      $('autostartIntro').textContent = T('Then the week number on the taskbar is always up to date, also after a restart.',
+        'Da er ukenummeret på oppgavelinjen alltid oppdatert, også etter omstart.');
+      setList('autostartSteps', [appMenuStep(),
+        T('Choose “App settings” ⚙.', 'Velg «Appinnstillinger» ⚙.'),
+        T('Turn on “Start automatically on device login”.', 'Slå på «Starter automatisk ved enhetspålogging».')]);
+    } else if (b === 'chrome') {
       setList('autostartSteps', [
         T('Click the button below, then paste (Ctrl+V) into the address bar of a Chrome window and press Enter.',
           'Klikk knappen under, lim inn (Ctrl+V) i adressefeltet i et Chrome-vindu og trykk Enter.'),
@@ -847,9 +855,16 @@
         T('Click … next to QuickCal and turn on “Auto-start on device login”.',
           'Klikk … ved QuickCal og slå på automatisk start ved pålogging (Auto-start on device login).')]);
     }
-    $('autostartTip').textContent = T(
-      'The menu names may differ slightly between browser versions and languages.',
-      'Navnene i menyene kan variere litt mellom nettleserversjoner og språk.');
+    $('autostartTip').textContent = viaAppMenu
+      ? T('There you can also create a desktop shortcut or uninstall QuickCal.',
+          'Der kan du også lage skrivebordssnarvei eller avinstallere QuickCal.')
+      : T('The menu names may differ slightly between browser versions and languages.',
+          'Navnene i menyene kan variere litt mellom nettleserversjoner og språk.');
+  }
+
+  function appMenuStep() {
+    return T('Click ⋯ at the top right of the QuickCal window, next to – ☐ ✕.',
+             'Klikk ⋯ øverst til høyre i QuickCal-vinduet, ved siden av – ☐ ✕.');
   }
 
   // Touch-only device (phone/tablet without mouse or trackpad): show swipe hints instead of
