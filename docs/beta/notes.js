@@ -97,7 +97,7 @@ window.QuickCalNotes = (function () {
   function isEmpty(n) { return !n || (!n.text.trim() && !n.color && !(n.images && n.images.length) && !n.repeat); }
   function remember(n) {
     if (isEmpty(n)) delete index[n.date];
-    else index[n.date] = { text: n.text, color: n.color, images: (n.images || []).length, end: n.endDate && n.endDate > n.date ? n.endDate : '', repeat: n.repeat || null };
+    else index[n.date] = { text: n.text, color: n.color, images: (n.images || []).length, end: n.endDate && n.endDate > n.date ? n.endDate : '', repeat: n.repeat || null, series: n.series || '' };
     rebuildCover();
   }
   // Multi-day notes: which note (by its first day) covers each day
@@ -158,7 +158,7 @@ window.QuickCalNotes = (function () {
     var guard = 0;
     function push(base) {
       var o = key(shifted(base, r));
-      if (o >= k && o >= from && o <= last && out.indexOf(o) < 0) out.push(o);
+      if (o >= k && o >= from && o <= last && out.indexOf(o) < 0 && !(r.skip && r.skip.indexOf(o) >= 0)) out.push(o);
     }
     var skip = Math.max(0, daysBetween(k, from) - 70);   // jump ahead to near 'from'
     if (r.freq === 'day') {
@@ -396,12 +396,17 @@ window.QuickCalNotes = (function () {
     return true;
   }
 
-  function openEditor(cell, date, holidayText) {
+  function openEditor(cell, date, holidayText, wholeSeries) {
     closePeek();
     if (editor) closeEditor();
     // A day inside a multi-day note opens that note (from its first day)
-    var k = noteStart(date) || key(date);
+    var a = at(key(date));
+    // A day of a repeating note opens that day: it becomes its own note (an exception) only when changed.
+    // "Edit series" opens the series itself (wholeSeries).
+    var series = a && index[a.k] && index[a.k].repeat && !wholeSeries ? a.k : null;
+    var k = series ? a.s : (a ? a.k : key(date));
     if (k !== key(date)) { date = parseKey(k); holidayText = ''; }
+    var isSeries = !!(index[k] && index[k].repeat);
     var box = el('div', 'noteEditor');
     box.setAttribute('role', 'dialog');
     var head = el('div', 'neHead');
@@ -417,6 +422,8 @@ window.QuickCalNotes = (function () {
     var x = el('button', 'neClose', '✕'); x.title = T('Close', 'Lukk');
     head.appendChild(x);
     box.appendChild(head);
+    var bar = el('div', 'neSeries hidden');
+    box.appendChild(bar);
 
     if (!available) {
       dash.remove(); endInput.remove();
@@ -468,7 +475,7 @@ window.QuickCalNotes = (function () {
           'Lagres automatisk. Lim inn bilder med Ctrl+V. Tas vare på i 3 måneder. ☑ lager sjekkliste: klikk på en boks for å krysse av. Ctrl+Enter lagrer og lukker.'));
     box.appendChild(hint);
 
-    var note = { date: k, text: '', color: '', images: [], endDate: '', repeat: null };
+    var note = { date: k, text: '', color: '', images: [], endDate: '', repeat: null, series: series || '', dirty: !series };
     editor = { box: box, note: note, timer: null, cell: cell };
     document.body.appendChild(box);
     position(box, cell);
@@ -492,6 +499,7 @@ window.QuickCalNotes = (function () {
       position(box, cell);
     }
     function saveSoon(ms) {
+      note.dirty = true;
       clearTimeout(editor.timer);
       editor.timer = setTimeout(function () { flush(); }, ms == null ? 400 : ms);
     }
@@ -561,7 +569,8 @@ window.QuickCalNotes = (function () {
     addImg.addEventListener('click', function () { file.click(); });
     file.addEventListener('change', function () { addFiles(file.files); file.value = ''; });
     del.addEventListener('click', function () {
-      note.text = ''; note.color = ''; note.images = []; note.repeat = null;
+      if (note.series) { skipDay(); return; }   // a day of a series: the series skips it
+      note.text = ''; note.color = ''; note.images = []; note.repeat = null; note.dirty = true;
       closeEditor();
     });
     x.addEventListener('click', closeEditor);
@@ -583,8 +592,13 @@ window.QuickCalNotes = (function () {
     // Focus right away (inside the click, so phones show the keyboard), so nothing typed is lost.
     // On a phone an existing note opens for reading first; tap the text to edit.
     if (!deps.isTouch() || !index[k]) area.focus();
-    getNote(k).then(function (saved) {
+    if (series) rep.classList.add('hidden');   // one day of a series: no rule of its own
+    getNote(series || k).then(function (saved) {
       if (!editor || editor.note !== note) return;
+      if (saved && series) {   // start from the series' text, color and pictures, on this day
+        saved = { text: saved.text, color: saved.color, images: saved.images, endDate: a.e > a.s ? a.e : '' };
+      }
+      if (saved && saved.series) note.series = saved.series;
       if (saved) {
         note.color = saved.color || ''; note.images = saved.images || [];
         note.endDate = saved.endDate || ''; endInput.value = note.endDate || k;
@@ -594,8 +608,68 @@ window.QuickCalNotes = (function () {
         area.value = note.text;
       }
       showColor(); showImages();
+      showSeriesBar();
     }).catch(function () { showColor(); });
     showColor();
+
+    // The bar for a repeating note: what this is, and what can be done with the series
+    function showSeriesBar() {
+      var sk = note.series || (isSeries ? k : '');
+      var sn = sk && index[sk];
+      bar.innerHTML = '';
+      bar.classList.toggle('hidden', !sn || !sn.repeat);
+      if (!sn || !sn.repeat) return;
+      if (isSeries) {
+        bar.appendChild(el('span', 'nsText', '↻ ' + T('The whole series. Changes apply to all its days.', 'Hele serien. Endringer gjelder alle dagene.')));
+        panel.classList.remove('hidden'); hint.classList.add('hidden'); showRepeat();
+        return;
+      }
+      bar.appendChild(el('span', 'nsText', '↻ ' + (note.series && !series
+        ? T('This day is changed from the series.', 'Denne dagen er endret fra serien.')
+        : T('One day in a series. Writing here changes only this day.', 'Én dag i en serie. Det du skriver her, gjelder bare denne dagen.'))));
+      function button(label, title, fn) {
+        var b = el('button', 'nsBtn', label); b.title = title;
+        b.addEventListener('click', function (e) { e.stopPropagation(); fn(); });
+        bar.appendChild(b);
+      }
+      var day = k;
+      button(T('Edit series', 'Rediger serien'), summary(sk, sn.repeat), function () {
+        closeEditor();
+        openEditor(cell, parseKey(sk), '', true);
+      });
+      button(T('Delete this day', 'Slett denne dagen'), T('The series skips this day', 'Serien hopper over denne dagen'), skipDay);
+      button(T('End series here', 'Avslutt serien her'), T('No more days from this one', 'Ingen flere dager fra og med denne'), function () {
+        drop();
+        getNote(sk).then(function (n) {
+          if (!n || !n.repeat) return;
+          if (addDays(day, -1) < n.date) { n.text = ''; n.color = ''; n.images = []; n.repeat = null; return save(n); }   // nothing left
+          n.repeat.until = addDays(day, -1);
+          return save(n);
+        }).then(deps.render, deps.render);
+      });
+    }
+    function skipDay() {
+      var sk = note.series, day = k;
+      drop();
+      getNote(sk).then(function (n) {
+        if (!n || !n.repeat) return;
+        n.repeat.skip = (n.repeat.skip || []).concat([day]);
+        return (index[day] && index[day].series === sk ? deleteNote(day).then(function () { delete index[day]; }) : Promise.resolve())
+          .then(function () { return save(n); });
+      }).then(deps.render, deps.render);
+    }
+    // Close without saving what is open (the series buttons save themselves)
+    function drop() { if (editor) { clearTimeout(editor.timer); editor.note = null; } closeEditor(); }
+    editor.changeStart = function (v) {   // series: a new first day (it is the note's key)
+      if (!v || v === k) return;
+      if (index[v]) { alert(T('There is already a note on that day.', 'Det er allerede et notat på den dagen.')); return; }
+      flush().then(function () { return getNote(k); }).then(function (n) {
+        if (!n) return;
+        var len = n.endDate ? daysBetween(n.date, n.endDate) : 0;
+        drop();
+        return relocate(n, v, addDays(v, len)).then(function () { openEditor(cell, parseKey(v), '', true); });
+      });
+    };
   }
 
   // The repeat panel in the editor: a few choices that read as a sentence, and the next days it gives
@@ -670,8 +744,13 @@ window.QuickCalNotes = (function () {
       l4.appendChild(el('span', '', T('after', 'etter')));
     }
 
-    var l5 = line();
-    l5.appendChild(el('span', '', T('Until', 'Til og med')));
+    var l0 = line();
+    l0.appendChild(el('span', '', T('Starts', 'Starter')));
+    var start = el('input', 'neEnd'); start.type = 'date'; start.value = note.date;
+    start.addEventListener('change', function () { if (editor && editor.changeStart) editor.changeStart(start.value); });
+    l0.appendChild(start);
+    var l5 = l0;
+    l5.appendChild(el('span', '', T('until', 'til og med')));
     var until = el('input', 'neEnd'); until.type = 'date'; until.min = note.date; until.value = r.until || '';
     until.addEventListener('change', function () { set('until', until.value && until.value >= note.date ? until.value : ''); });
     l5.appendChild(until);
@@ -710,7 +789,8 @@ window.QuickCalNotes = (function () {
       '<li><b>Første arbeidsdag i måneden</b>: lag notatet på den 1., Månedlig · på dag 1 · Flytt 0 arbeidsdager.</li>',
       '<li><b>Annenhver mandag</b>: Ukentlig · hver 2. uke · ma.</li>',
       '<li><b>Bursdag</b>: Årlig.</li></ul>',
-      '<p class="nhSmall">Notatet lagres én gang. Endrer eller sletter du det, gjelder det alle datoene, også avkrysninger i sjekklister. Startdagen viser bare notatet hvis den passer med regelen.</p>'
+      '<h3>Enkeltdager og hele serien</h3>',
+      '<p>Åpner du en dag i serien, gjelder det du skriver bare den dagen (for eksempel avkrysninger i en sjekkliste). Dagen blir et eget notat og slettes etter 3 måneder som andre notater, mens serien fortsetter. <i>Rediger serien</i> endrer tekst, farge og regel for alle dagene, og <i>Starter</i> kan flyttes der. <i>Slett denne dagen</i> hopper over én dag, og <i>Avslutt serien her</i> stopper den fra og med den dagen.</p>'
     ] : [
       '<h2>How repeating works</h2>',
       '<p><b>Repeat</b> daily, weekly, monthly or yearly. "Every 2" means every other time. Weekly: pick one or more weekdays. Monthly: <i>on day 15</i> (the note\'s date) or the <i>first … last</i> weekday of the month.</p>',
@@ -725,7 +805,8 @@ window.QuickCalNotes = (function () {
       '<li><b>First work day of the month</b>: make the note on the 1st, Monthly · on day 1 · Move 0 work days.</li>',
       '<li><b>Every other Monday</b>: Weekly · every 2 weeks · Mo.</li>',
       '<li><b>Birthday</b>: Yearly.</li></ul>',
-      '<p class="nhSmall">The note is stored once. Changing or deleting it applies to all its dates, ticked checklist items too. The start day only shows the note if it fits the rule.</p>'
+      '<h3>One day or the whole series</h3>',
+      '<p>When you open a day of the series, what you write applies to that day only (ticked checklist items, for example). The day becomes a note of its own and is deleted after 3 months like other notes, while the series goes on. <i>Edit series</i> changes text, color and rule for all days, and <i>Starts</i> can be moved there. <i>Delete this day</i> skips one day, and <i>End series here</i> stops it from that day on.</p>'
     ];
     helpBox = el('div', 'noteHelp');
     var inner = el('div', 'nhBox');
@@ -740,9 +821,10 @@ window.QuickCalNotes = (function () {
   }
 
   function flush() {
-    if (!editor || !editor.note) return Promise.resolve();
+    if (!editor || !editor.note || !editor.note.dirty) return Promise.resolve();
     clearTimeout(editor.timer);
     var n = { date: editor.note.date, text: editor.note.text, color: editor.note.color, images: editor.note.images.slice() };
+    if (editor.note.series) n.series = editor.note.series;
     if (editor.note.endDate) n.endDate = editor.note.endDate;
     if (editor.note.repeat) n.repeat = editor.note.repeat;
     return save(n).then(deps.render, function () { deps.render(); });
@@ -967,7 +1049,10 @@ window.QuickCalNotes = (function () {
         save({ date: k, text: '', color: '', images: [] }).then(function () { deps.render(); fillList(listEl, emptyEl); });
       });
       row.appendChild(rm);
-      row.addEventListener('click', function () { deps.showDate(d); });
+      row.addEventListener('click', function () {   // a series: its next day
+        var nx2 = n.repeat && nextOccurrences(k, n.repeat, 1)[0];
+        deps.showDate(nx2 ? parseKey(nx2) : d);
+      });
       listEl.appendChild(row);
     });
   }
