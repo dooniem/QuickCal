@@ -171,7 +171,36 @@ window.QuickCalNotes = (function () {
 
   function isOpen() { return !!editor; }
 
+  // ---------- Peek: a small, non-blocking box for a clicked day, with a button that opens the editor ----------
+  var peek = null;
+  function openPeek(cell, date, holidayText) {
+    closePeek();
+    var k = key(date), n = index[k];
+    var box = el('div', 'notePeek');
+    var head = el('div', 'npHead');
+    head.appendChild(el('span', 'neTitle', deps.dayTitle(date)));
+    if (holidayText) head.appendChild(el('span', 'neHoliday', holidayText));
+    box.appendChild(head);
+    if (n && n.text.trim()) box.appendChild(el('div', 'npText', n.text.trim()));
+    var open = el('button', 'npOpen', n ? T('✎ Open note', '✎ Åpne notat') : T('✎ Write a note', '✎ Skriv notat'));
+    open.addEventListener('click', function (e) { e.stopPropagation(); closePeek(); openEditor(cell, date, holidayText); });
+    box.appendChild(open);
+    box.addEventListener('click', closePeek);   // a click on the box itself (not the button) just closes it
+    document.body.appendChild(box);
+    cell.classList.add('picked');
+    peek = { box: box, cell: cell };
+    place(box, cell, true);
+  }
+  function closePeek() {
+    if (!peek) return;
+    peek.cell.classList.remove('picked');
+    peek.box.remove();
+    peek = null;
+  }
+  function isPeekOpen() { return !!peek; }
+
   function openEditor(cell, date, holidayText) {
+    closePeek();
     if (editor) closeEditor();
     var k = key(date);
     var box = el('div', 'noteEditor');
@@ -311,14 +340,22 @@ window.QuickCalNotes = (function () {
   }
 
   // Next to the day on a PC, at the top of the screen on a phone (room for the keyboard)
-  function position(box, cell) {
+  function position(box, cell) { place(box, cell, false); }
+  function place(box, cell, small) {
     var vw = window.innerWidth, vh = window.innerHeight;
-    if (deps.isTouch() || vw < 420) {
+    if (!small && (deps.isTouch() || vw < 420)) {
       box.style.left = Math.max(8, (vw - box.offsetWidth) / 2) + 'px';
       box.style.top = '8px';
       return;
     }
     var r = cell.getBoundingClientRect();
+    if (small) {   // under the day (above if no room), so the days beside it stay clickable
+      var t = r.bottom + 4;
+      if (t + box.offsetHeight > vh - 4) t = r.top - box.offsetHeight - 4;
+      box.style.left = Math.max(4, Math.min(vw - box.offsetWidth - 4, r.left)) + 'px';
+      box.style.top = Math.max(4, t) + 'px';
+      return;
+    }
     var left = r.right + 6, top = r.top;
     if (left + box.offsetWidth > vw - 4) left = r.left - box.offsetWidth - 6;
     if (left < 4) left = Math.max(4, Math.min(vw - box.offsetWidth - 4, r.left));
@@ -392,6 +429,9 @@ window.QuickCalNotes = (function () {
     openEditor: openEditor,
     closeEditor: closeEditor,
     isOpen: isOpen,
+    openPeek: openPeek,
+    closePeek: closePeek,
+    isPeekOpen: isPeekOpen,
     fillList: fillList,
     deleteAll: deleteAll,
     count: function () { return Object.keys(index).length; },

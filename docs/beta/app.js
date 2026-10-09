@@ -63,7 +63,10 @@
     return false;
   }
   function T(en, no) { return norwegian() ? no : en; }
-  function cap(s) { return s ? s.charAt(0).toLocaleUpperCase(systemLang()) + s.slice(1) : s; }
+  function cap(s) {
+    if (!s) return s;
+    try { return s.charAt(0).toLocaleUpperCase(systemLang()) + s.slice(1); } catch (e) { return s.charAt(0).toUpperCase() + s.slice(1); }
+  }
 
   var EN_MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
   var NO_MONTHS = ['Januar', 'Februar', 'Mars', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Desember'];
@@ -343,6 +346,7 @@
 
   function showPage(id) {
     closePopups();
+    notes(function (N) { N.closePeek(); });
     if (!isCalendarPage(id)) notes(function (N) { N.closeEditor(); });
     if (id === 'yearView') {
       var L = yearLayout();
@@ -510,8 +514,22 @@
     var cell = e.target.closest && e.target.closest('.cell[data-tip], .cell.note');
     if (cell && !cell.contains(e.relatedTarget)) hideTip();
   });
-  // Click (tap) a day: open its note. A tap that ends a swipe is not a click on a day.
+  // Click (tap) a day: a small box with the day and a "Write a note" button. Double-click opens the note
+  // at once. While a note is open, a click outside it only closes it. A tap that ends a swipe is not a click.
   var lastSwipe = 0;
+  document.addEventListener('click', function (e) {
+    var t = e.target;
+    if (!t.closest || !document.body.contains(t) || t.closest('.noteEditor, .noteImageView')) return;
+    if (notes(function (N) { return N.isOpen(); }, false)) {
+      notes(function (N) { N.closeEditor(); });
+      e.stopPropagation();
+      e.preventDefault();
+      ignoreDblClick = Date.now();
+      return;
+    }
+    if (!t.closest('.notePeek, .cell.pick')) notes(function (N) { N.closePeek(); });
+  }, true);
+  var ignoreDblClick = 0;
   scalerEl.addEventListener('click', function (e) {
     var cell = e.target.closest && e.target.closest('.cell.pick');
     if (!cell || Date.now() - lastSwipe < 400) return;
@@ -521,13 +539,14 @@
     }
     hideTip();
     var d = cellDate(cell);
-    if (d) notes(function (N) { N.openEditor(cell, d, cell.dataset.tip); });
+    if (d) notes(function (N) { N.openPeek(cell, d, cell.dataset.tip); });
   });
-  document.addEventListener('click', function (e) {
-    var t = e.target;
-    if (t.closest && !t.closest('.noteEditor, .noteImageView, .cell.pick') && document.body.contains(t)) {
-      notes(function (N) { N.closeEditor(); });
-    }
+  scalerEl.addEventListener('dblclick', function (e) {
+    var cell = e.target.closest && e.target.closest('.cell.pick');
+    if (!cell || !isInstalled() || Date.now() - ignoreDblClick < 600) return;
+    hideTip();
+    var d = cellDate(cell);
+    if (d) notes(function (N) { N.openEditor(cell, d, cell.dataset.tip); });
   });
   document.addEventListener('click', function (e) {
     if (!$('menu').contains(e.target) && !(e.target.closest && e.target.closest('.clickable'))) $('menu').classList.add('hidden');
@@ -539,6 +558,7 @@
       if (e.key === 'Escape') notes(function (N) { N.closeEditor(); });
       return;   // typing in a note: no calendar shortcuts
     }
+    notes(function (N) { N.closePeek(); });
     if (e.key === 'Escape') { closePopups(); return; }
     if (e.repeat || !isCalendarPage(currentPage)) return;
     var tag = (e.target && e.target.tagName) || '';
