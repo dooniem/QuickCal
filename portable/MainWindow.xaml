@@ -372,7 +372,7 @@
                         <Viewbox Stretch="Uniform" Height="20" Margin="0,0,6,0">
                             <Border x:Name="alwaysOnTopPanel" BorderBrush="Black" BorderThickness="1" Background="White" Cursor="Hand"
                                     MouseLeftButtonUp="OnTop_Click">
-                                <TextBlock x:Name="alwaysOnTopText" Text="Always on top" Margin="5,0,5,0" Foreground="Black" FontSize="11" HorizontalAlignment="Left"/>
+                                <TextBlock Text="&#xE718;" FontFamily="Segoe MDL2 Assets" FontSize="20" Margin="3,0,3,0" Foreground="Black" VerticalAlignment="Center"/>
                             </Border>
                         </Viewbox>
                         <Viewbox Stretch="Uniform" Height="20">
@@ -440,12 +440,6 @@
                     </Grid.ColumnDefinitions>
                     <Viewbox Grid.Column="0" HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="0.5">
                         <StackPanel x:Name="yearInfoPanel" Orientation="Horizontal" Margin="6,4,0,1"/>
-                    </Viewbox>
-                    <Viewbox Grid.Column="1" Stretch="Uniform" HorizontalAlignment="Left">
-                        <Border x:Name="yearAlwaysOnTopPanel" BorderBrush="Black" BorderThickness="1" Background="White" Cursor="Hand"
-                                MouseLeftButtonUp="OnTop_Click">
-                            <TextBlock x:Name="yearAlwaysOnTopText" Text="Always on top" Margin="5,0,5,0" Foreground="Black" FontSize="11"/>
-                        </Border>
                     </Viewbox>
                     <Viewbox Grid.Column="1" Stretch="Uniform" HorizontalAlignment="Right">
                         <Border BorderBrush="Black" BorderThickness="1" Background="White" Cursor="Hand"

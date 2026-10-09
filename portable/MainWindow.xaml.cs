@@ -34,12 +34,6 @@ namespace QuickCal
 
             RestoreWindowPlacement();
 
-            // Remember the normal (not maximized, not compact) size, so we can return to it later
-            rootViewbox.SizeChanged += (s, e) =>
-            {
-                if (IsLoaded && WindowState == WindowState.Normal && !IsCompact) normalClientSize = e.NewSize;
-            };
-
             ApplyUiTexts();
             UpdateDayLabels();
             UpdateGrids();
@@ -449,68 +443,28 @@ namespace QuickCal
         }
 
         // =====================================================================================
-        // "Always on top" - same as the UWP CompactOverlay mode:
-        // a small 405x250 window on top of everything, showing the calendar unscaled
-        // so only the first two months are visible. Turning it off restores the previous size.
+        // "Always on top": the window stays above other windows, same size and the same 3 months.
+        // The pin button is green while it is on. Not in the year view (full screen).
         // =====================================================================================
-
-        private const double CompactWidth = 405;
-        private const double CompactHeight = 250;
-        private Size normalClientSize = new Size(600, 220);
 
         private bool IsCompact => Topmost;
 
-        private bool restoreNormalSizeAfterMaximize;
-
         private void OnTop_Click(object sender, MouseButtonEventArgs e)
         {
-            if (IsCompact)
-            {
-                ExitCompact(resize: true);
-                return;
-            }
-
-            if (IsMaximized)
-            {
-                // From the year view: leave full screen first, then go compact
-                restoreNormalSizeAfterMaximize = false;
-                WindowState = WindowState.Normal;
-            }
-            EnterCompact();
+            if (IsCompact) ExitCompact();
+            else EnterCompact();
         }
 
         private void EnterCompact()
         {
             Topmost = true;
             alwaysOnTopPanel.Background = Brushes.LightGreen;
-            yearAlwaysOnTopPanel.Background = Brushes.LightGreen;
-            rootViewbox.Stretch = Stretch.None;
-            rootViewbox.HorizontalAlignment = HorizontalAlignment.Left;
-            rootViewbox.VerticalAlignment = VerticalAlignment.Bottom;
-            SetClientSize(CompactWidth, CompactHeight);
         }
 
-        private void ExitCompact(bool resize)
+        private void ExitCompact()
         {
             Topmost = false;
             alwaysOnTopPanel.Background = Brushes.White;
-            yearAlwaysOnTopPanel.Background = Brushes.White;
-            rootViewbox.Stretch = Stretch.Uniform;
-            rootViewbox.HorizontalAlignment = HorizontalAlignment.Stretch;
-            rootViewbox.VerticalAlignment = VerticalAlignment.Stretch;
-            if (resize) SetClientSize(normalClientSize.Width, normalClientSize.Height);
-        }
-
-        /// <summary>
-        /// Sizes the window so its inner area is exactly width x height,
-        /// then lets the user resize freely again.
-        /// </summary>
-        private void SetClientSize(double width, double height)
-        {
-            rootViewbox.Width = width;
-            rootViewbox.Height = height;
-            SizeToContent = SizeToContent.WidthAndHeight;
-            Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded, new Action(ReleaseFixedSize));
         }
 
         private void ReleaseFixedSize()
@@ -876,13 +830,12 @@ namespace QuickCal
         private void ApplyUiTexts()
         {
             // Calendar page
-            alwaysOnTopText.Text = T("Always on top", "Alltid øverst");
+            alwaysOnTopPanel.ToolTip = T("Always on top", "Alltid øverst");
             settingsButtonText.Text = T("Settings", "Innstillinger");
             SetKeyHint(infoPanel, T(" month · ", " måned · "), T(" year · ", " år · "), T(" / minimize: today", " / minimer: i dag"));
 
             // Year view
             SetKeyHint(yearInfoPanel, T(" change year · ", " bytt år · "), null, T(" this year", " nåværende år"));
-            yearAlwaysOnTopText.Text = alwaysOnTopText.Text;
             yearSettingsText.Text = settingsButtonText.Text;
 
             // Settings page
@@ -953,23 +906,14 @@ namespace QuickCal
 
             if (WindowState == WindowState.Maximized)
             {
-                // Full screen shows the whole year. "Always on top" (compact) does not make sense here.
-                if (IsCompact)
-                {
-                    ExitCompact(resize: false);
-                    restoreNormalSizeAfterMaximize = true;
-                }
+                // Full screen shows the whole year. "Always on top" does not make sense here.
+                if (IsCompact) ExitCompact();
                 ResetToToday();
             }
             else if (WindowState == WindowState.Normal && previous != WindowState.Normal)
             {
                 // Back from maximized or minimized: 3 months with the current month in the middle
                 ResetToToday();
-                if (previous == WindowState.Maximized && restoreNormalSizeAfterMaximize)
-                {
-                    restoreNormalSizeAfterMaximize = false;
-                    SetClientSize(normalClientSize.Width, normalClientSize.Height);
-                }
             }
         }
 
@@ -991,11 +935,8 @@ namespace QuickCal
             AppSettings values = settingsManager.Values;
             values.WindowLeft = Left;
             values.WindowTop = Top;
-            if (!IsCompact) // don't remember the small "Always on top" size as the normal size
-            {
-                values.WindowWidth = ActualWidth;
-                values.WindowHeight = ActualHeight;
-            }
+            values.WindowWidth = ActualWidth;
+            values.WindowHeight = ActualHeight;
         }
 
         private void RestoreWindowPlacement()
