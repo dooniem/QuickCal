@@ -174,7 +174,10 @@ window.QuickCalNotes = (function () {
   // ---------- Peek: a small, non-blocking box for a clicked day, with a button that opens the editor ----------
   var peek = null;
   function openPeek(cell, date, holidayText) {
+    // A second click on the same day closes it again (back to the plain calendar)
+    var same = peek && peek.cell.dataset.date === cell.dataset.date && document.body.contains(peek.cell);
     closePeek();
+    if (same) return;
     var k = key(date), n = index[k];
     var box = el('div', 'notePeek');
     // Just a pen button (the picked day already has a black frame), plus the holiday name if the day has one
