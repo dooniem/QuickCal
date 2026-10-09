@@ -195,3 +195,25 @@ html.pipActive #stage { visibility: hidden; }
 #pipCover .linkBox { font-size: 14px; line-height: 20px; padding: 2px 10px; }
 /* Beta: one more row (Notes on/off) on the settings page */
 #settingsPage .setRow { min-height: 26px; margin: 1px 0 1px 5px; }
+/* Beta: notes page tools (search, color filter, Excel export) */
+.notesTools { position: absolute; top: 4px; left: 110px; display: flex; gap: 4px; align-items: center; }
+.notesSearch { display: flex; align-items: center; gap: 4px; width: 250px; height: 26px; padding: 0 6px; border: 1px solid #999; border-radius: 13px; background: #fff; box-sizing: border-box; cursor: text; }
+.notesSearch:focus-within { border-color: #143275; box-shadow: 0 0 0 1px #143275; }
+.notesSearch svg { width: 14px; height: 14px; flex: none; color: #666; }
+.notesSearch input { flex: 1; min-width: 0; border: 0; outline: 0; font: inherit; font-size: 12px; background: transparent; padding: 0; }
+.notesFilterBtn { position: relative; width: 30px; height: 26px; border: 1px solid #999; border-radius: 4px; background: #fff; cursor: pointer; padding: 3px; }
+.notesFilterBtn:hover { background: #eee; }
+.notesFilterBtn svg { width: 100%; height: 100%; }
+.notesFilterBtn.active { background: #dbe8ff; border-color: #143275; color: #143275; }
+.notesFilterBtn.active svg path { fill: #143275; }
+.nfCount { position: absolute; top: -5px; right: -5px; min-width: 13px; height: 13px; border-radius: 7px; background: #143275; color: #fff; font-size: 9px; line-height: 13px; text-align: center; }
+.nfCount:empty { display: none; }
+.notesFilterMenu { position: absolute; top: 30px; left: 254px; z-index: 5; background: #fff; border: 1px solid #888; border-radius: 4px; box-shadow: 0 2px 8px rgba(0,0,0,.2); padding: 2px; display: flex; flex-direction: column; }
+.nfRow { display: flex; align-items: center; gap: 6px; border: 0; background: transparent; font: inherit; font-size: 11.5px; padding: 2px 8px 2px 4px; cursor: pointer; text-align: left; white-space: nowrap; }
+.nfRow:hover { background: #e5f1fb; }
+.nfRow:first-child { border-bottom: 1px solid #ddd; margin-bottom: 2px; }
+.nfCheck { width: 12px; font-weight: 700; }
+.noteNoMatch { padding: 6px 4px; color: #666; font-size: 11.5px; }
+.btn.exportBtn { position: absolute; right: 15px; bottom: 3px; width: 40px; height: 32px; padding: 4px 8px; }
+.btn.exportBtn svg { width: 100%; height: 100%; }
+.btn.exportBtn:disabled { opacity: .4; cursor: default; }

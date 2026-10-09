@@ -852,7 +852,11 @@
     $('notesInstallInfo').classList.toggle('hidden', installed);
     $('notesInstallBtn').classList.toggle('hidden', installed);
     notes(function (N) { N.fillList($('notesList'), $('notesEmpty')); });
-    $('notesDeleteAll').classList.toggle('hidden', !notes(function (N) { return N.count(); }, 0));
+    var any = !!notes(function (N) { return N.count(); }, 0);
+    $('notesDeleteAll').classList.toggle('hidden', !any);
+    $('notesTools').classList.toggle('hidden', !any);   // search and color filter
+    $('notesExport').classList.toggle('hidden', !any);
+    $('notesFilterMenu').classList.add('hidden');
     showPage('notesPage');
   }
   // Notepad button next to Settings. Before installing, it leads to a page that explains notes.
@@ -1131,6 +1135,9 @@
     $('notesInstallBtn').textContent = mobileOS() ? T('Show me how', 'Vis meg hvordan') : T('Install as app', 'Installer som app');
     $('notesTitle').textContent = T('Notes', 'Notater');
     $('notesDeleteAll').textContent = T('Delete all', 'Slett alle');
+    $('notesSearch').placeholder = T('Search notes', 'Søk i notater');
+    $('notesFilterBtn').title = T('Filter by color', 'Filtrer på farge');
+    $('notesExport').title = T('Export the list to Excel', 'Eksporter listen til Excel');
 
     $('welcomeTitle').textContent = T('Getting started with QuickCal', 'Kom i gang med QuickCal');
     $('wInstallText').textContent = T('Install QuickCal as an app', 'Installer QuickCal som app');
@@ -1224,7 +1231,8 @@
     if (notesStarted) return;
     notes(function (N) {
       notesStarted = true;
-      N.init({ T: T, render: rerender, showDate: showDate, isTouch: touchOnly, dayTitle: dayTitle });
+      N.init({ T: T, render: rerender, showDate: showDate, isTouch: touchOnly, dayTitle: dayTitle, isoWeek: isoWeek });
+      N.listTools({ search: $('notesSearch'), filterBtn: $('notesFilterBtn'), filterMenu: $('notesFilterMenu'), exportBtn: $('notesExport'), list: $('notesList'), empty: $('notesEmpty') });
     });
   }
   startNotes();
