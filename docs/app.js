@@ -617,6 +617,15 @@
     return 'other';
   }
 
+  // Phone or tablet: installing means "add to the home screen", and there is no taskbar or autostart.
+  // iPadOS reports itself as a Mac, so a Mac with a touch screen counts as an iPad.
+  function mobileOS() {
+    var ua = navigator.userAgent || '';
+    if (/iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1)) return 'ios';
+    if (/Android/.test(ua)) return 'android';
+    return null;
+  }
+
   window.addEventListener('beforeinstallprompt', function (e) {
     e.preventDefault();
     installPrompt = e;
@@ -648,7 +657,13 @@
     }
     now.classList.toggle('hidden', !installPrompt || installed);
     $('resetSizeBtn').classList.toggle('hidden', !installed);
-    $('installPageBtn').textContent = installed ? T('Uninstall', 'Avinstaller') : T('Install as app', 'Installer som app');
+    var mobile = mobileOS();
+    $('installPageBtn').textContent = mobile
+      ? (installed ? T('Remove app', 'Fjern appen') : T('Add to home screen', 'Legg på Hjem-skjermen'))
+      : installed ? T('Uninstall', 'Avinstaller') : T('Install as app', 'Installer som app');
+    // Phones and tablets have no taskbar, autostart or window size
+    $('autostartPageBtn').classList.toggle('hidden', !!mobile);
+    if (mobile) $('resetSizeBtn').classList.add('hidden');
     now.textContent = T('Install QuickCal now', 'Installer QuickCal nå');
   }
 
@@ -738,6 +753,7 @@
   // Shown once, on the first start as an installed app. Edge asks at that moment whether the app may
   // create a desktop shortcut and start when you sign in, so explain both and recommend Allow.
   function showInstalledPage() {
+    if (mobileOS()) { settings.appAutostartShown = true; saveSettings(); return; }
     var edge = browserKind() === 'edge';
     $('installedTitle').textContent = T('QuickCal is installed', 'QuickCal er installert');
     $('installedIntro').textContent = edge
@@ -780,7 +796,48 @@
     // Install page (becomes the uninstall page when QuickCal runs as an installed app)
     var pin = T('Right-click the QuickCal icon on the taskbar and choose “Pin to taskbar”. The week number is shown on the icon.',
       'Høyreklikk QuickCal-ikonet på oppgavelinjen og velg «Fest til oppgavelinjen». Ukenummeret vises på ikonet.');
-    if (isInstalled()) {
+    var mobile = mobileOS();
+    if (mobile && isInstalled()) {
+      $('installTitle').textContent = T('Remove QuickCal', 'Fjern QuickCal');
+      $('installIntro').textContent = T(
+        'A web app cannot remove itself, but it only takes a moment:',
+        'En webapp kan ikke fjerne seg selv, men det tar bare et øyeblikk:');
+      setList('installSteps', mobile === 'ios' ? [
+        T('Touch and hold the QuickCal icon on the Home Screen.', 'Hold fingeren på QuickCal-ikonet på Hjem-skjermen.'),
+        T('Choose “Remove App” or “Delete Bookmark” and confirm.', 'Velg «Fjern app» eller «Slett bokmerke» og bekreft.')] : [
+        T('Touch and hold the QuickCal icon on the home screen.', 'Hold fingeren på QuickCal-ikonet på startskjermen.'),
+        T('Choose “Uninstall” (or drag the icon to Uninstall) and confirm.', 'Velg «Avinstaller» (eller dra ikonet til Avinstaller) og bekreft.')]);
+      $('installTip').textContent = T(
+        'You can add QuickCal again at any time from the same web address.',
+        'Du kan legge til QuickCal igjen når som helst fra den samme nettadressen.');
+    } else if (mobile) {
+      $('installTitle').textContent = T('Add QuickCal to the home screen', 'Legg QuickCal på Hjem-skjermen');
+      $('installIntro').textContent = T(
+        'As an app, QuickCal gets its own icon, opens in full screen and works offline.',
+        'Som app får QuickCal sitt eget ikon, åpnes i fullskjerm og virker uten nett.');
+      if (installPrompt) {
+        setList('installSteps', [
+          T('Tap “Install QuickCal now” below and confirm with Install.',
+            'Trykk «Installer QuickCal nå» under og bekreft med Installer.')]);
+      } else if (mobile === 'ios') {
+        setList('installSteps', [
+          T('Tap Share ⬆ (in Safari at the bottom or next to the address bar, in Chrome at the top right).',
+            'Trykk Del ⬆ (i Safari nederst eller ved adressefeltet, i Chrome øverst til høyre).'),
+          T('Choose “Add to Home Screen”. Scroll down in the list if you do not see it.',
+            'Velg «Legg til på Hjem-skjerm». Bla ned i listen hvis du ikke ser valget.'),
+          T('Leave “Open as Web App” on if it is shown, and tap Add.',
+            'La «Åpne som webapp» være på hvis valget vises, og trykk Legg til.')]);
+      } else {
+        setList('installSteps', [
+          T('Open the browser menu ⋮ at the top right.', 'Åpne nettlesermenyen ⋮ øverst til høyre.'),
+          T('Choose “Install app” or “Add to Home screen” and confirm.',
+            'Velg «Installer app» eller «Legg til på startsiden» og bekreft.')]);
+      }
+      $('installTip').textContent = mobile === 'ios'
+        ? T('Works in Safari and Chrome. QuickCal goes to today every time you open it again.',
+            'Virker i Safari og Chrome. QuickCal går til i dag hver gang du åpner den igjen.')
+        : T('QuickCal goes to today every time you open it again.', 'QuickCal går til i dag hver gang du åpner den igjen.');
+    } else if (isInstalled()) {
       $('installTitle').textContent = T('Uninstall QuickCal', 'Avinstaller QuickCal');
       $('installIntro').textContent = T(
         'A web app cannot uninstall itself, but it only takes a moment:',
@@ -946,6 +1003,11 @@
       'When QuickCal is installed and open (minimized is fine), the week number is shown on its icon. Right-click the icon and choose “Pin to taskbar”.',
       'Når QuickCal er installert og åpen (gjerne minimert), vises ukenummeret på ikonet. Høyreklikk ikonet og velg «Fest til oppgavelinjen».')));
     $('wAutostartText').textContent = T('Start automatically when you sign in', 'Start automatisk når du logger på');
+    // Phones and tablets: "add to the home screen", and no taskbar or autostart rows
+    var mobile = mobileOS();
+    if (mobile) $('wInstallText').textContent = T('Add QuickCal to the home screen', 'Legg QuickCal på Hjem-skjermen');
+    $('wBadgeText').parentNode.classList.toggle('hidden', !!mobile);
+    $('wAutostartText').parentNode.classList.toggle('hidden', !!mobile);
     $('wAutostartBtn').textContent = T('Show me how', 'Vis meg hvordan');
     $('wTip').textContent = touchOnly() ? T(
       'Tip: the arrows, the month name and the year at the top can be tapped. Swipe left or right to change month, and swipe down to go to today.',

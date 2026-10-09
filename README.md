@@ -28,7 +28,7 @@ QuickCal is free and open source. It comes in two versions:
 
 To change the choices later, click **⋯** in QuickCal's title bar and choose **App settings**. Chrome does not ask, so there QuickCal shows how to turn on automatic start.
 
-On an iPhone or iPad, open the link in Safari, tap **Share** and choose **Add to Home Screen**.
+On an iPhone or iPad there is no install button: open the link in Safari or Chrome, tap **Share** ⬆ and choose **Add to Home Screen**. On Android, open the ⋮ menu and choose **Install app** or **Add to Home screen**.
 
 Edge is recommended because it is already on every Windows PC and gives the app a clean window. Chrome adds a large *Uninstall* button to the app's title bar that cannot be hidden.
 
