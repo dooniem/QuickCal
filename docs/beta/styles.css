@@ -46,8 +46,8 @@ button { font-family: inherit; color: inherit; }
 
 /* ---------- Year view ---------- */
 #yearView { display: grid; grid-template-rows: 34px 1fr 20px; }
-.yearBar { margin: 4px 4px 2px; background: var(--blue); color: #fff; display: grid; grid-template-columns: 44px 1fr 44px; align-items: stretch; }
-.yearBar .navBtn { background: transparent; border: 2px solid transparent; color: #fff; cursor: pointer; padding: 2px 8px; }
+.yearBar { margin: 4px 4px 2px; background: var(--blue); color: #fff; display: grid; grid-template-columns: 44px 1fr 44px; grid-template-rows: minmax(0, 1fr); align-items: stretch; min-height: 0; }   /* row = the bar's own height, so the year is centered in it */
+.yearBar .navBtn { background: transparent; border: 2px solid transparent; color: #fff; cursor: pointer; padding: 0 6px; }
 .yearBar .navBtn:hover { border-color: var(--hover); }
 .yearBar .navBtn svg { width: 100%; height: 100%; }
 #yearTitle { display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 20px; line-height: 1; }
