@@ -23,13 +23,16 @@ window.QuickCalNotes = (function () {
   var deps = null;          // { T, render, showDate, isTouch, dayTitle }
   var db = null;
   var available = false;
-  var index = {};           // 'YYYY-MM-DD' -> { text, color, images (count) } for drawing the calendar
+  var index = {};           // 'YYYY-MM-DD' -> { text, color, images (count), end } for drawing the calendar
+  var cover = {};           // every day a note covers -> the day it starts on (a note can span several days)
+  var MAX_SPAN_DAYS = 62;
   var editor = null;        // open editor state
 
   function T(en, no) { return deps.T(en, no); }
   function pad(n) { return (n < 10 ? '0' : '') + n; }
   function key(d) { return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
   function parseKey(k) { var p = k.split('-'); return new Date(+p[0], +p[1] - 1, +p[2]); }
+  function addDays(k, n) { var d = parseKey(k); d.setDate(d.getDate() + n); return key(d); }
   function colorHex(id) { for (var i = 0; i < COLORS.length; i++) if (COLORS[i].id === id) return COLORS[i].hex; return null; }
   function el(tag, cls, text) {
     var e = document.createElement(tag);
@@ -73,7 +76,23 @@ window.QuickCalNotes = (function () {
   function isEmpty(n) { return !n || (!n.text.trim() && !n.color && !(n.images && n.images.length)); }
   function remember(n) {
     if (isEmpty(n)) delete index[n.date];
-    else index[n.date] = { text: n.text, color: n.color, images: (n.images || []).length };
+    else index[n.date] = { text: n.text, color: n.color, images: (n.images || []).length, end: n.endDate && n.endDate > n.date ? n.endDate : '' };
+    rebuildCover();
+  }
+  // Multi-day notes: which note (by its first day) covers each day
+  function rebuildCover() {
+    cover = {};
+    Object.keys(index).forEach(function (k) {
+      var end = index[k].end || k, d = k;
+      for (var i = 0; i < MAX_SPAN_DAYS && d <= end; i++, d = addDays(d, 1)) if (!cover[d]) cover[d] = k;
+    });
+  }
+  function noteStart(date) { return cover[key(date)] || null; }
+  // Last day a note starting on k may run to: not into the next note, and not longer than MAX_SPAN_DAYS
+  function maxEnd(k) {
+    var next = Object.keys(index).filter(function (s) { return s > k; }).sort()[0];
+    var max = addDays(k, MAX_SPAN_DAYS - 1);
+    return next && addDays(next, -1) < max ? addDays(next, -1) : max;
   }
 
   // Save, or delete when nothing is left. Asks the browser once to keep the data (not evict it).
@@ -92,10 +111,10 @@ window.QuickCalNotes = (function () {
   function removeOld() {
     var limit = oldestKept();
     return getAll().then(function (all) {
-      var old = all.filter(function (n) { return n.date < limit; });
+      var old = all.filter(function (n) { return (n.endDate || n.date) < limit; });
       if (!old.length) return;
       return tx('readwrite', function (s) { old.forEach(function (n) { s.delete(n.date); }); })
-        .then(function () { old.forEach(function (n) { delete index[n.date]; }); deps.render(); });
+        .then(function () { old.forEach(function (n) { delete index[n.date]; }); rebuildCover(); deps.render(); });
     });
   }
 
@@ -124,10 +143,18 @@ window.QuickCalNotes = (function () {
   // =====================================================================================
 
   /** Marks a day cell that has a note: color, hatch and a small notepad icon. */
+  // A note over several days looks like one piece: no line between its days in the same week (and month),
+  // and the notepad icon only on its last day (in each month).
   function decorate(cell, date) {
-    var n = index[key(date)];
+    var dk = key(date), sk = cover[dk], n = sk && index[sk];
     if (!n) return;
     cell.classList.add('note');
+    if (n.end) {
+      var lastOfMonth = new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate() === date.getDate();
+      if (dk !== sk && date.getDay() !== 1 && date.getDate() !== 1) cell.classList.add('noteJoinL');
+      if (dk !== n.end && date.getDay() !== 0 && !lastOfMonth) cell.classList.add('noteJoinR');
+      if (dk !== n.end && !lastOfMonth) cell.classList.add('noteNoIcon');
+    }
     var hex = colorHex(n.color);
     if (hex && !cell.classList.contains('today') && !cell.classList.contains('holiday') && !cell.classList.contains('gold')) {
       cell.style.backgroundColor = hex;
@@ -138,21 +165,26 @@ window.QuickCalNotes = (function () {
     }
   }
 
-  function hasNote(date) { return !!index[key(date)]; }
+  function hasNote(date) { return !!noteStart(date); }
+  function spanText(k, end) {
+    var a = parseKey(k), b = parseKey(end);
+    return a.getDate() + '.' + (a.getMonth() + 1) + '. – ' + b.getDate() + '.' + (b.getMonth() + 1) + '.';
+  }
 
   /** Hover tooltip for a day with a note: the text (and the first image), under the holiday name if any. */
   function fillTip(tip, date, holidayText, onResize) {
-    var n = index[key(date)];
+    var sk = noteStart(date), n = sk && index[sk];
     if (!n) return false;
     tip.innerHTML = '';
     tip.classList.add('noteTip');
     if (holidayText) tip.appendChild(el('div', 'tipHoliday', holidayText));
+    if (n.end) tip.appendChild(el('div', 'tipSpan', spanText(sk, n.end)));
     var text = n.text.trim();
     if (text) tip.appendChild(el('div', 'tipText', text.length > 400 ? text.slice(0, 400) + '…' : text));
     if (n.images) {
       var holder = el('div', 'tipImages');
       tip.appendChild(holder);
-      getNote(key(date)).then(function (full) {
+      getNote(sk).then(function (full) {
         if (!full || !full.images || tip.classList.contains('hidden')) return;
         full.images.slice(0, 2).forEach(function (b) {
           var img = el('img');
@@ -178,7 +210,7 @@ window.QuickCalNotes = (function () {
     var same = peek && peek.cell.dataset.date === cell.dataset.date && document.body.contains(peek.cell);
     closePeek();
     if (same) return;
-    var k = key(date), n = index[k];
+    var k = noteStart(date) || key(date), n = index[k];
     var box = el('div', 'notePeek');
     // Just a pen button (the picked day already has a black frame), plus the holiday name if the day has one
     var open = el('button', 'npOpen', '✎');
@@ -204,7 +236,9 @@ window.QuickCalNotes = (function () {
   function openEditor(cell, date, holidayText) {
     closePeek();
     if (editor) closeEditor();
-    var k = key(date);
+    // A day inside a multi-day note opens that note (from its first day)
+    var k = noteStart(date) || key(date);
+    if (k !== key(date)) { date = parseKey(k); holidayText = ''; }
     var box = el('div', 'noteEditor');
     box.setAttribute('role', 'dialog');
     var head = el('div', 'neHead');
@@ -224,6 +258,14 @@ window.QuickCalNotes = (function () {
       position(box, cell);
       return;
     }
+
+    // To (and including): the last day of the note. The same day = a note for just that day.
+    var span = el('label', 'neSpan');
+    span.appendChild(el('span', '', T('To and including', 'Til og med')));
+    var endInput = el('input'); endInput.type = 'date';
+    endInput.min = k; endInput.max = maxEnd(k); endInput.value = k;
+    span.appendChild(endInput);
+    box.appendChild(span);
 
     var area = el('textarea', 'neText');
     area.placeholder = T('Write a note…', 'Skriv et notat …');
@@ -253,7 +295,7 @@ window.QuickCalNotes = (function () {
       : T('Saved automatically. Paste pictures with Ctrl+V. Kept for 3 months.', 'Lagres automatisk. Lim inn bilder med Ctrl+V. Tas vare på i 3 måneder.'));
     box.appendChild(hint);
 
-    var note = { date: k, text: '', color: '', images: [] };
+    var note = { date: k, text: '', color: '', images: [], endDate: '' };
     editor = { box: box, note: note, timer: null, cell: cell };
     document.body.appendChild(box);
     position(box, cell);
@@ -292,6 +334,14 @@ window.QuickCalNotes = (function () {
     }
 
     area.addEventListener('input', function () { note.text = area.value; saveSoon(); });
+    endInput.addEventListener('change', function () {
+      var v = endInput.value;
+      if (!v || v < k) v = k;
+      if (v > endInput.max) v = endInput.max;
+      endInput.value = v;
+      note.endDate = v > k ? v : '';
+      saveSoon(0);
+    });
     area.addEventListener('paste', function (e) {
       var files = e.clipboardData && e.clipboardData.files;
       if (files && files.length && addFiles(files)) e.preventDefault();
@@ -317,6 +367,7 @@ window.QuickCalNotes = (function () {
       if (!editor || editor.note !== note) return;
       if (saved) {
         note.color = saved.color || ''; note.images = saved.images || [];
+        note.endDate = saved.endDate || ''; endInput.value = note.endDate || k;
         note.text = (saved.text || '') + area.value;   // keep anything typed while loading
         area.value = note.text;
       }
@@ -329,6 +380,7 @@ window.QuickCalNotes = (function () {
     if (!editor || !editor.note) return Promise.resolve();
     clearTimeout(editor.timer);
     var n = { date: editor.note.date, text: editor.note.text, color: editor.note.color, images: editor.note.images.slice() };
+    if (editor.note.endDate) n.endDate = editor.note.endDate;
     return save(n).then(deps.render, function () { deps.render(); });
   }
 
@@ -446,25 +498,25 @@ window.QuickCalNotes = (function () {
       all.forEach(function (n) { byDate[n.date] = n; });
       var maxPics = 0;
       keys.forEach(function (k) { maxPics = Math.max(maxPics, ((byDate[k] && byDate[k].images) || []).length); });
-      var head = [T('Date', 'Dato'), T('Day', 'Dag'), T('Week', 'Uke'), T('Color', 'Farge'), T('Note', 'Notat')];
+      var head = [T('Date', 'Dato'), T('To', 'Til'), T('Day', 'Dag'), T('Week', 'Uke'), T('Color', 'Farge'), T('Note', 'Notat')];
       for (var i = 0; i < maxPics; i++) head.push(T('Picture ', 'Bilde ') + (i + 1));
       var rows = [head], images = [], rowHeights = {}, jobs = [];
       keys.forEach(function (k, r) {
         var n = byDate[k] || { text: index[k].text, color: index[k].color, images: [] }, d = parseKey(k);
-        var row = [d, cap(d.toLocaleDateString(lang(), { weekday: 'long' })), deps.isoWeek(d), colorName(n.color), (n.text || '').trim()];
+        var row = [d, n.endDate ? parseKey(n.endDate) : '', cap(d.toLocaleDateString(lang(), { weekday: 'long' })), deps.isoWeek(d), colorName(n.color), (n.text || '').trim()];
         for (var j = 0; j < maxPics; j++) row.push('');
         rows.push(row);
         (n.images || []).forEach(function (blob, j) {
           rowHeights[r + 1] = 90;
           jobs.push(picture(blob).then(function (p) {
-            if (p) images.push({ row: r + 1, col: 5 + j, data: p.data, type: p.type, w: p.w, h: p.h, name: k + ' ' + (j + 1) });
+            if (p) images.push({ row: r + 1, col: 6 + j, data: p.data, type: p.type, w: p.w, h: p.h, name: k + ' ' + (j + 1) });
           }));
         });
       });
       return Promise.all(jobs).then(function () {
-        var widths = [10, 10, 6, 10, 50];
+        var widths = [10, 10, 10, 6, 10, 50];
         for (var i = 0; i < maxPics; i++) widths.push(22);
-        var blob = window.QuickCalXlsx.write(rows, { sheet: T('Notes', 'Notater'), widths: widths, wrap: [4], images: images, rowHeights: rowHeights });
+        var blob = window.QuickCalXlsx.write(rows, { sheet: T('Notes', 'Notater'), widths: widths, wrap: [5], images: images, rowHeights: rowHeights });
         return save.then(function (write) { return write(blob); });
       });
     }).catch(function (e) { if (window.console && !(e && e.name === 'AbortError')) console.error(e); })
@@ -498,7 +550,9 @@ window.QuickCalNotes = (function () {
       var hex = colorHex(n.color);
       if (hex) dot.style.background = hex; else dot.classList.add('plain');
       row.appendChild(dot);
-      row.appendChild(el('span', 'noteDate', deps.dayTitle(d, true)));
+      var dateCell = el('span', 'noteDate', deps.dayTitle(d, true));
+      if (n.end) { var e = parseKey(n.end); dateCell.appendChild(el('span', 'noteEnd', ' → ' + e.getDate() + '.' + (e.getMonth() + 1) + '.')); }
+      row.appendChild(dateCell);
       var first = n.text.trim().split('\n')[0] || (n.images ? T('(picture)', '(bilde)') : '');
       row.appendChild(el('span', 'noteFirst', first));
       if (n.images) row.appendChild(el('span', 'noteImgs', '🖼' + (n.images > 1 ? n.images : '')));
@@ -514,7 +568,7 @@ window.QuickCalNotes = (function () {
   }
 
   function deleteAll() {
-    return tx('readwrite', function (s) { s.clear(); }).then(function () { index = {}; deps.render(); });
+    return tx('readwrite', function (s) { s.clear(); }).then(function () { index = {}; cover = {}; deps.render(); });
   }
 
   // =====================================================================================
@@ -549,7 +603,7 @@ window.QuickCalNotes = (function () {
     count: function () { return Object.keys(index).length; },
     reload: function () {   // notes may have been changed in the "Always on top" window
       if (!available) return Promise.resolve();
-      return getAll().then(function (all) { index = {}; all.forEach(remember); deps.render(); });
+      return getAll().then(function (all) { index = {}; all.forEach(remember); rebuildCover(); deps.render(); });
     },
     removeOld: function () { return available ? removeOld() : Promise.resolve(); }
   };
