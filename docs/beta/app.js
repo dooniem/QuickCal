@@ -409,15 +409,25 @@
     });
   }
 
-  // Notes list: fills a maximized window (like the year view), the usual small page otherwise
-  var NOTES_ZOOM = 1.25;
+  // Notes list: fills a maximized window (like the year view), the usual small page otherwise.
+  // Phones and tablets show the year when the screen is large (isLarge), so the list fills the screen there too:
+  // at its natural size, at least 600 wide (a narrow phone shrinks it to fit), with small margins.
+  var NOTES_ZOOM = 1.25, notesZoom = NOTES_ZOOM;
   function notesLayout() {
-    var page = $('notesPage'), full = isLarge() && !touchOnly();
+    var page = $('notesPage'), full = isLarge(), touch = touchOnly();
     page.classList.toggle('full', full);
-    // Margins around it, more at the sides than at the top and bottom (the page is centered by rescale)
-    var W = window.innerWidth / NOTES_ZOOM, H = window.innerHeight / NOTES_ZOOM;
-    page.dataset.w = full ? Math.round(W - 2 * Math.max(40, W * 0.07)) : 600;
-    page.dataset.h = full ? Math.round(H - 2 * 24) : 220;
+    if (touch) {
+      var pw = Math.max(600, window.innerWidth - 20);
+      notesZoom = Math.min(1, (window.innerWidth - 20) / pw);
+      page.dataset.w = full ? Math.round(pw) : 600;
+      page.dataset.h = full ? Math.round(window.innerHeight / notesZoom - 24) : 220;
+    } else {
+      // Margins around it, more at the sides than at the top and bottom (the page is centered by rescale)
+      notesZoom = NOTES_ZOOM;
+      var W = window.innerWidth / NOTES_ZOOM, H = window.innerHeight / NOTES_ZOOM;
+      page.dataset.w = full ? Math.round(W - 2 * Math.max(40, W * 0.07)) : 600;
+      page.dataset.h = full ? Math.round(H - 2 * 24) : 220;
+    }
     if (currentPage === 'notesPage') {
       $('scaler').style.width = page.dataset.w + 'px';
       $('scaler').style.height = page.dataset.h + 'px';
@@ -429,7 +439,7 @@
     var s = Math.min(window.innerWidth / w, window.innerHeight / h);
     // Text pages in a maximized window: natural size, centered (not blown up)
     if (!isCalendarPage(currentPage) && currentPage !== 'notesPage' && isLarge()) s = Math.min(s, 1);
-    if (currentPage === 'notesPage' && page.classList.contains('full')) s = NOTES_ZOOM;   // keeps its margins
+    if (currentPage === 'notesPage' && page.classList.contains('full')) s = notesZoom;   // keeps its margins
     scaler.style.transform = 'scale(' + s + ')';
     scaler.style.left = Math.max(0, (window.innerWidth - w * s) / 2) + 'px';
     scaler.style.top = Math.max(0, (window.innerHeight - h * s) / 2) + 'px';
