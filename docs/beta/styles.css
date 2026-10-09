@@ -264,3 +264,6 @@ html.pipActive #stage { visibility: hidden; }
 .nhSmall { color: #555; font-size: 11px; }
 .neDelete { color: #000; display: inline-flex; align-items: center; justify-content: center; }
 .neDelete svg { width: 17px; height: 17px; }
+/* Beta: notes list in a maximized window fills the window */
+#notesPage.full .notesList { height: calc(100% - 92px); }
+#notesPage.full .noteRow { font-size: 12.5px; padding: 3px 4px; }
