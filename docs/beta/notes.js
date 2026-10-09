@@ -684,6 +684,7 @@ window.QuickCalNotes = (function () {
         saved = { text: saved.text, color: saved.color, images: saved.images, endDate: a.e > a.s ? a.e : '' };
       }
       if (saved && saved.series) note.series = saved.series;
+      if (!series) editor.orig = saved ? copyNote0(saved) : null;   // for Undo after a change or a delete
       if (saved) {
         note.color = saved.color || ''; note.images = saved.images || [];
         note.endDate = saved.endDate || ''; endInput.value = note.endDate || day;
@@ -724,23 +725,30 @@ window.QuickCalNotes = (function () {
       button(T('Delete this day', 'Slett denne dagen'), T('The series skips this day', 'Serien hopper over denne dagen'), skipDay);
       button(T('End series here', 'Avslutt serien her'), T('No more days from this one', 'Ingen flere dager fra og med denne'), function () {
         drop();
-        getNote(sk).then(function (n) {
+        var undo = null;
+        snapshot([sk]).then(function (u) { undo = u; return getNote(sk); }).then(function (n) {
           if (!n || !n.repeat) return;
           if (addDays(day, -1) < dayOf(n.date)) { n.text = ''; n.color = ''; n.images = []; n.repeat = null; return save(n); }   // nothing left
           n.repeat.until = addDays(day, -1);
           return save(n);
-        }).then(deps.render, deps.render);
+        }).then(function () {
+          deps.render();
+          if (undo) showUndo(T('Series ended.', 'Serien er avsluttet.'), undo);
+        }, deps.render);
       });
     }
     function skipDay() {
-      var sk = note.series;
+      var sk = note.series, undo = null;
       drop();
-      getNote(sk).then(function (n) {
+      snapshot([sk, k]).then(function (u) { undo = u; return getNote(sk); }).then(function (n) {
         if (!n || !n.repeat) return;
         n.repeat.skip = (n.repeat.skip || []).concat([day]);
         return (index[k] && index[k].series === sk ? deleteNote(k).then(function () { delete index[k]; }) : Promise.resolve())
           .then(function () { return save(n); });
-      }).then(deps.render, deps.render);
+      }).then(function () {
+        deps.render();
+        if (undo) showUndo(T('Day deleted from the series.', 'Dagen er slettet fra serien.'), undo);
+      }, deps.render);
     }
     // Close without saving what is open (the series buttons save themselves)
     function drop() { if (editor) { clearTimeout(editor.timer); editor.note = null; } closeEditor(); }
@@ -918,10 +926,48 @@ window.QuickCalNotes = (function () {
     if (!editor) return;
     var ed = editor;
     closeRepeatHelp();
-    flush();
+    var done = flush();
     editor = null;
+    // Undo after changing or deleting a note (not after writing a new one). A changed day of a series: Undo removes the change.
+    var n = ed.note;
+    if (n && n.dirty && (ed.orig ? changed(ed.orig, n) : n.series && n.date !== n.series)) {
+      var orig = ed.orig, k = n.date, gone = isEmpty(n);
+      done.then(function () {
+        showUndo(orig ? (gone ? T('Note deleted.', 'Notatet er slettet.') : T('Note changed.', 'Notatet er endret.')) : T('Day changed.', 'Dagen er endret.'),
+          function () { putBack([k], [orig]); });
+      });
+    }
     Array.prototype.forEach.call(ed.box.querySelectorAll('img'), function (i) { URL.revokeObjectURL(i.src); });
     ed.box.remove();
+  }
+
+  // ---------- Undo: put notes back as they were ----------
+  function copyNote0(n) {
+    var c = { date: n.date, text: n.text || '', color: n.color || '', images: (n.images || []).slice(), updated: n.updated || 0 };
+    if (n.endDate) c.endDate = n.endDate;
+    if (n.repeat) c.repeat = JSON.parse(JSON.stringify(n.repeat));
+    if (n.series) c.series = n.series;
+    return c;
+  }
+  function changed(a, n) {
+    var ai = a.images || [], ni = n.images || [];
+    return a.text !== n.text || (a.color || '') !== (n.color || '') || (a.endDate || '') !== (n.endDate || '') ||
+      JSON.stringify(a.repeat || null) !== JSON.stringify(n.repeat || null) ||
+      ai.length !== ni.length || ai.some(function (b, i) { return b !== ni[i]; });
+  }
+  // The records of these keys now, and a function that puts them back (null = no note there)
+  function snapshot(keys) {
+    return Promise.all(keys.map(getNote)).then(function (recs) {
+      recs = recs.map(function (r) { return r ? copyNote0(r) : null; });
+      return function () { return putBack(keys, recs); };
+    });
+  }
+  function putBack(keys, recs) {
+    return tx('readwrite', function (s) { keys.forEach(function (k, i) { if (recs[i]) s.put(recs[i]); else s.delete(k); }); })
+      .then(getAll).then(function (all) {
+        index = {}; all.forEach(remember); rebuildCover(); deps.render();
+        if (tools && tools.list.offsetParent && tools.onRestored) tools.onRestored(); else refreshList();
+      }).catch(function (e) { if (window.console) console.error(e); });
   }
 
   // Next to the day on a PC, at the top of the screen on a phone (room for the keyboard)
@@ -1142,7 +1188,12 @@ window.QuickCalNotes = (function () {
       var rm = el('button', 'noteRemove', '🗑'); rm.title = T('Delete note', 'Slett notat');
       rm.addEventListener('click', function (e) {
         e.stopPropagation();
-        save({ date: k, text: '', color: '', images: [] }).then(function () { deps.render(); fillList(listEl, emptyEl); });
+        snapshot([k]).then(function (undo) {
+          return save({ date: k, text: '', color: '', images: [] }).then(function () {
+            deps.render(); fillList(listEl, emptyEl);
+            showUndo(T('Note deleted.', 'Notatet er slettet.'), undo);
+          });
+        });
       });
       row.appendChild(rm);
       row.addEventListener('click', function () {   // a series: its next day
@@ -1453,7 +1504,13 @@ window.QuickCalNotes = (function () {
   }
 
   function deleteAll() {
-    return tx('readwrite', function (s) { s.clear(); }).then(function () { index = {}; rebuildCover(); deps.render(); });
+    return getAll().then(function (all) {
+      var recs = all.map(copyNote0), keys = all.map(function (n) { return n.date; });
+      return tx('readwrite', function (s) { s.clear(); }).then(function () {
+        index = {}; rebuildCover(); deps.render();
+        if (recs.length) showUndo(T('All notes deleted.', 'Alle notatene er slettet.'), function () { putBack(keys, recs); });
+      });
+    });
   }
 
   // =====================================================================================
