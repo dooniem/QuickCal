@@ -267,6 +267,9 @@ html.pipActive #stage { visibility: hidden; }
 /* Beta: notes list in a maximized window fills the window */
 #notesPage.full .notesList { height: calc(100% - 92px); }
 #notesPage.full .noteRow { font-size: 12.5px; padding: 3px 4px; }
+.noteThumbs { display: none; }
+#notesPage.full .noteThumbs { display: flex; flex-wrap: wrap; gap: 4px; margin: 3px 0 2px; }
+#notesPage.full .noteThumbs img { width: 64px; height: 48px; object-fit: cover; border: 1px solid #ccc; border-radius: 3px; background: #f4f4f4; }
 .bhIcon svg { width: 13px; height: 13px; vertical-align: -2px; color: #333; }
 /* Beta: drag notes to move them or change their length */
 html.noteDragging, html.noteDragging * { cursor: grabbing !important; }
