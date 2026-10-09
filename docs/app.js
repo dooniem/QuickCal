@@ -688,6 +688,13 @@
     updateHolidayRows();
     showPage('settingsPage');
   }
+  // Language takes effect at once, so the settings page itself switches language
+  $('languageSelect').addEventListener('change', function () {
+    settings.language = this.value;
+    saveSettings();
+    applyTexts();
+    updateBadge(true);
+  });
   $('settingsBtn1').addEventListener('click', openSettings);
   $('settingsBtn2').addEventListener('click', openSettings);
   $('holidaysCheck').addEventListener('click', function () { setCheck(this, !isChecked(this)); updateHolidayRows(); });
@@ -776,8 +783,8 @@
     if (isInstalled()) {
       $('installTitle').textContent = T('Uninstall QuickCal', 'Avinstaller QuickCal');
       $('installIntro').textContent = T(
-        'A web page cannot uninstall itself, but it only takes a moment:',
-        'En nettside kan ikke avinstallere seg selv, men det tar bare et øyeblikk:');
+        'A web app cannot uninstall itself, but it only takes a moment:',
+        'En webapp kan ikke avinstallere seg selv, men det tar bare et øyeblikk:');
       if (b === 'edge') {
         setList('installSteps', [appMenuStep(),
           T('Choose “App settings” ⚙, then “Uninstall”.', 'Velg «Appinnstillinger» ⚙ og deretter «Avinstaller».')]);
@@ -827,8 +834,8 @@
     // Autostart page
     $('autostartTitle').textContent = T('Start QuickCal when you sign in', 'Start QuickCal automatisk når du logger på');
     $('autostartIntro').textContent = isInstalled()
-      ? T('Then the week number on the taskbar icon is always up to date, also after a restart. Browsers do not let a web page turn this on itself, but it only takes a moment:',
-          'Da er ukenummeret på oppgavelinjen alltid oppdatert, også etter omstart. Nettleseren lar ikke en nettside slå dette på selv, men det tar bare et øyeblikk:')
+      ? T('Then the week number on the taskbar icon is always up to date, also after a restart. Browsers do not let a web app turn this on itself, but it only takes a moment:',
+          'Da er ukenummeret på oppgavelinjen alltid oppdatert, også etter omstart. Nettleseren lar ikke en webapp slå dette på selv, men det tar bare et øyeblikk:')
       : T('Then the week number on the taskbar is always up to date. QuickCal must be installed as an app first.',
           'Da er ukenummeret på oppgavelinjen alltid oppdatert. QuickCal må være installert som app først.');
     var appsUrl = b === 'chrome' ? 'chrome://apps' : 'edge://apps';
