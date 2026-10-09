@@ -1018,8 +1018,12 @@ window.QuickCalNotes = (function () {
   function showBackupHint() {
     var h = tools && tools.backupHint; if (!h) return;
     var last = lastBackup();
-    h.textContent = T('Notes are only stored here. Back up regularly with ↓', 'Notatene lagres bare her. Ta sikkerhetskopi jevnlig med ↓') +
-      (last ? ' (' + T('last ', 'sist ') + parseKey(last).getDate() + '.' + (parseKey(last).getMonth() + 1) + '.)' : '.');
+    // The arrow is a small copy of the backup button's icon (a text arrow is too thin in Segoe UI)
+    h.textContent = T('Notes are only stored here. Back up regularly with', 'Notatene lagres bare her. Ta sikkerhetskopi jevnlig med') + ' ';
+    var icon = el('span', 'bhIcon');
+    icon.innerHTML = tools.backupBtn.querySelector('svg').outerHTML;
+    h.appendChild(icon);
+    h.appendChild(document.createTextNode(last ? ' (' + T('last ', 'sist ') + parseKey(last).getDate() + '.' + (parseKey(last).getMonth() + 1) + '.)' : ''));
     h.classList.toggle('hidden', !Object.keys(index).length);
   }
   // Notes in the file replace notes that start on the same day; all other notes are kept.
