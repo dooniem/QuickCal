@@ -1158,6 +1158,7 @@ window.QuickCalNotes = (function () {
   // Hand cursor over a note, ↔ at the outer edges. A drag starts after a few pixels, so a click stays a
   // click. Dashed frame on the days it would cover (red if it cannot go there). Esc cancels. Repeating
   // notes are not dragged (change them in the ↻ panel). An "Undo" button shows for a few seconds.
+  // Dragging an edge into another week copies the note to the same weekdays there (see target); Ctrl stretches it.
   // =====================================================================================
   var drag = null, hoverCell = null, swallowClick = false, undoBox = null;
   function cellKey(cell) {
@@ -1179,14 +1180,33 @@ window.QuickCalNotes = (function () {
     hoverCell = cell;
     if (cell) cell.style.cursor = mode === 'move' ? 'grab' : mode ? 'ew-resize' : '';
   }
+  function weekday(k) { return (parseKey(k).getDay() + 6) % 7; }   // Monday = 0
+  function mondayOf(k) { return addDays(k, -weekday(k)); }
+  var MAX_COPY_WEEKS = 26;
+  // Where the drag would put the note: blocks [{s, e}], the first is the note itself, any others are copies.
+  // Dragging an edge into another week copies the note to the same weekdays of each week in between
+  // (Mon-Thu dragged down two rows = Mon-Thu in three weeks). With Ctrl held it grows over every day instead.
   function target(d, hk) {
-    var s = d.s, e = d.e;
-    if (d.mode === 'move') { var off = daysBetween(d.from, hk); s = addDays(d.s, off); e = addDays(d.e, off); }
-    else if (d.mode === 'end') e = hk < d.s ? d.s : hk;
-    else s = hk > d.e ? d.e : hk;
-    var ok = daysBetween(s, e) < MAX_SPAN_DAYS && !(index[s] && s !== d.k);
-    for (var x = s; ok && x <= e; x = addDays(x, 1)) if (cover[x] && cover[x] !== d.k) ok = false;
-    return { s: s, e: e, ok: ok };
+    var s = d.s, e = d.e, w0 = mondayOf(d.s), wk = mondayOf(hk), blocks = null;
+    if (d.mode !== 'move' && !d.ctrl && w0 === mondayOf(d.e) && (d.mode === 'end' ? wk > w0 : wk < w0)) {
+      var c0 = weekday(d.s), c1 = weekday(d.e);
+      if (d.mode === 'end') c1 = Math.max(c0, weekday(hk)); else c0 = Math.min(c1, weekday(hk));
+      var rows = Math.min(Math.abs(daysBetween(w0, wk)) / 7, MAX_COPY_WEEKS), step = d.mode === 'end' ? 7 : -7;
+      blocks = [];
+      for (var i = 0; i <= rows; i++) blocks.push({ s: addDays(w0, i * step + c0), e: addDays(w0, i * step + c1) });
+      s = blocks[0].s; e = blocks[0].e;
+    } else {
+      if (d.mode === 'move') { var off = daysBetween(d.from, hk); s = addDays(d.s, off); e = addDays(d.e, off); }
+      else if (d.mode === 'end') e = hk < d.s ? d.s : hk;
+      else s = hk > d.e ? d.e : hk;
+      blocks = [{ s: s, e: e }];
+    }
+    var ok = daysBetween(s, e) < MAX_SPAN_DAYS;
+    blocks.forEach(function (b) {
+      if (index[b.s] && b.s !== d.k) ok = false;
+      for (var x = b.s; ok && x <= b.e; x = addDays(x, 1)) if (cover[x] && cover[x] !== d.k) ok = false;
+    });
+    return { s: s, e: e, blocks: blocks, ok: ok };
   }
   function clearPreview() {
     Array.prototype.forEach.call(document.querySelectorAll('.cell.dropOk, .cell.dropBad'), function (c) { c.classList.remove('dropOk', 'dropBad'); });
@@ -1195,7 +1215,7 @@ window.QuickCalNotes = (function () {
     clearPreview();
     Array.prototype.forEach.call(document.querySelectorAll('.cell.pick'), function (c) {
       var k = cellKey(c);
-      if (k >= t.s && k <= t.e) c.classList.add(t.ok ? 'dropOk' : 'dropBad');
+      if (t.blocks.some(function (b) { return k >= b.s && k <= b.e; })) c.classList.add(t.ok ? 'dropOk' : 'dropBad');
     });
     document.documentElement.classList.toggle('noteDropBad', !t.ok);
   }
@@ -1209,7 +1229,7 @@ window.QuickCalNotes = (function () {
     var cell = dayCell(e.target), mode = cell && dragMode(cell, e.clientX);
     if (!mode) return;
     var a = at(cellKey(cell));
-    drag = { mode: mode, k: a.k, s: a.s, e: a.e, from: cellKey(cell), x: e.clientX, y: e.clientY, active: false, t: null };
+    drag = { mode: mode, k: a.k, s: a.s, e: a.e, from: cellKey(cell), x: e.clientX, y: e.clientY, active: false, t: null, ctrl: e.ctrlKey || e.metaKey };
     e.preventDefault();   // no text selection while dragging
   }
   function onPointerMove(e) {
@@ -1226,8 +1246,14 @@ window.QuickCalNotes = (function () {
       document.documentElement.classList.add(drag.mode === 'move' ? 'noteDragging' : 'noteResizing');
     }
     var over = dayCell(document.elementFromPoint(e.clientX, e.clientY)), hk = cellKey(over);
+    drag.ctrl = e.ctrlKey || e.metaKey;
     if (!hk) return;
-    drag.t = target(drag, hk);
+    drag.hk = hk;
+    retarget();
+  }
+  function retarget() {
+    if (!drag || !drag.active || !drag.hk) return;
+    drag.t = target(drag, drag.hk);
     showPreview(drag.t);
   }
   function onPointerUp(e) {
@@ -1237,7 +1263,9 @@ window.QuickCalNotes = (function () {
     if (!d.active) return;   // just a click
     swallowClick = true;     // the click that follows the drop must not open the small box
     setTimeout(function () { swallowClick = false; }, 0);
-    if (!d.t || !d.t.ok || (d.t.s === d.s && d.t.e === d.e)) return;
+    if (!d.t || !d.t.ok) return;
+    if (d.t.blocks.length > 1) return copyNote(d.k, d.t.blocks);
+    if (d.t.s === d.s && d.t.e === d.e) return;
     moveNote(d.k, d.t.s, d.t.e, d.mode === 'move' ? T('Note moved.', 'Notatet er flyttet.') : T('Note changed.', 'Notatet er endret.'));
   }
   function moveNote(k, s, e, message) {
@@ -1246,6 +1274,27 @@ window.QuickCalNotes = (function () {
       var before = JSON.parse(JSON.stringify({ date: n.date, endDate: n.endDate || '' }));
       return relocate(n, s, e).then(function () { showUndo(message, function () { relocate(n, before.date, before.endDate || before.date); }); });
     }).catch(function (err) { if (window.console) console.error(err); });
+  }
+  // The note goes on blocks[0] and a copy (text, colour, pictures) on each of the other blocks
+  function copyNote(k, blocks) {
+    return getNote(k).then(function (n) {
+      if (!n) return;
+      var before = { date: n.date, end: n.endDate || n.date }, copies = blocks.slice(1);
+      return relocate(n, blocks[0].s, blocks[0].e).then(function () {
+        return Promise.all(copies.map(function (b) {
+          var c = { date: b.s, text: n.text, color: n.color, images: (n.images || []).slice() };
+          if (b.e > b.s) c.endDate = b.e;
+          return save(c);
+        }));
+      }).then(function () {
+        deps.render();
+        showUndo(T('Note copied to ' + copies.length + (copies.length === 1 ? ' more week.' : ' more weeks.'),
+                   'Notatet er kopiert til ' + copies.length + (copies.length === 1 ? ' uke til.' : ' uker til.')), function () {
+          Promise.all(copies.map(function (b) { delete index[b.s]; return deleteNote(b.s); }))
+            .then(function () { rebuildCover(); return relocate(n, before.date, before.end); });
+        });
+      });
+    }).catch(function (err) { if (window.console) console.error(err); deps.render(); });
   }
   // Stores note n on days s..e (it may get a new first day, which is its key)
   function relocate(n, s, e) {
@@ -1273,6 +1322,10 @@ window.QuickCalNotes = (function () {
     window.addEventListener('blur', function () { if (drag) endDrag(); });
     document.addEventListener('keydown', function (e) {
       if (drag && e.key === 'Escape') { e.stopPropagation(); e.preventDefault(); endDrag(); }
+      else if (drag && (e.key === 'Control' || e.key === 'Meta')) { drag.ctrl = true; retarget(); }
+    }, true);
+    document.addEventListener('keyup', function (e) {
+      if (drag && (e.key === 'Control' || e.key === 'Meta')) { drag.ctrl = false; retarget(); }
     }, true);
     document.addEventListener('click', function (e) {
       if (swallowClick) { swallowClick = false; e.stopPropagation(); e.preventDefault(); }
