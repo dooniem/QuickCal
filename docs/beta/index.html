@@ -10,8 +10,25 @@
   <link rel="icon" type="image/png" href="../icons/favicon.png">
   <link rel="apple-touch-icon" href="../icons/icon-192.png">
   <link rel="stylesheet" href="styles.css">
+  <!-- Installed app: the window gets its size at once, and the QuickCal icon shows until the app is ready -->
+  <style>#splash { display: none; } html.starting #splash { display: flex; position: fixed; inset: 0; z-index: 99; align-items: center; justify-content: center; background: #fff; } #splash img { width: 72px; height: 72px; }</style>
+  <script>
+    (function () {
+      try {
+        if (!(matchMedia('(display-mode: standalone)').matches || matchMedia('(display-mode: window-controls-overlay)').matches)) return;
+        document.documentElement.classList.add('starting');
+        window.addEventListener('load', function () { document.documentElement.classList.remove('starting'); });
+        var s = JSON.parse(localStorage.getItem('quickcal-beta.settings') || '{}');
+        if (s.appMaximized) return;
+        var z = s.appSize || { w: 600, h: 220 };
+        var w = Math.max(300, Math.min(z.w, screen.availWidth)), h = Math.max(110, Math.min(z.h, screen.availHeight));
+        window.resizeTo(w + (window.outerWidth - window.innerWidth), h + (window.outerHeight - window.innerHeight));
+      } catch (e) { /* the app sizes the window again when it starts */ }
+    })();
+  </script>
 </head>
 <body>
+  <div id="splash"><img src="../icons/icon-192.png" alt=""></div>
   <div id="stage">
     <div id="scaler">
 
