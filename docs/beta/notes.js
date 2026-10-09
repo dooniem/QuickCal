@@ -880,6 +880,7 @@ window.QuickCalNotes = (function () {
       tools.filterBtn.querySelector('.nfCount').textContent = active ? String(filter.colors.length) : '';
       tools.exportBtn.disabled = !keys.length;
     }
+    showBackupHint();
     if (all && !keys.length) listEl.appendChild(el('div', 'noteNoMatch', T('No notes match.', 'Ingen notater passer.')));
     keys.forEach(function (k) {
       var n = index[k], d = parseKey(k);
@@ -950,8 +951,16 @@ window.QuickCalNotes = (function () {
       });
     }).then(function () {
       try { localStorage.setItem(LAST_BACKUP_KEY, key(new Date())); } catch (e) { /* storage blocked */ }
-      if (tools) tools.backupBtn.title = backupTitle();
+      if (tools) { tools.backupBtn.title = backupTitle(); showBackupHint(); }
     }).catch(function (e) { if (window.console && !(e && e.name === 'AbortError')) console.error(e); });
+  }
+  // A small reminder next to the button: notes live only in this browser
+  function showBackupHint() {
+    var h = tools && tools.backupHint; if (!h) return;
+    var last = lastBackup();
+    h.textContent = T('Notes are only stored here. Back up regularly with ↓', 'Notatene lagres bare her. Ta sikkerhetskopi jevnlig med ↓') +
+      (last ? ' (' + T('last ', 'sist ') + parseKey(last).getDate() + '.' + (parseKey(last).getMonth() + 1) + '.)' : '.');
+    h.classList.toggle('hidden', !Object.keys(index).length);
   }
   // Notes in the file replace notes that start on the same day; all other notes are kept.
   function restore(file) {
