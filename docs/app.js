@@ -36,8 +36,14 @@
   // Language and texts
   // =====================================================================================
 
+  // The browser's own language (Intl follows it) counts too: Edge in Norwegian with English first
+  // among the preferred web page languages should still give a Norwegian QuickCal.
   function systemLang() {
-    return (navigator.languages && navigator.languages[0]) || navigator.language || 'en';
+    var first = (navigator.languages && navigator.languages[0]) || navigator.language || '';
+    var ui = '';
+    try { ui = Intl.DateTimeFormat().resolvedOptions().locale; } catch (e) { /* old browser */ }
+    if (!isNorwegianCode(first) && isNorwegianCode(ui)) return ui;
+    return first || ui || 'en';
   }
   function isNorwegianCode(code) {
     code = (code || '').toLowerCase();
@@ -305,7 +311,7 @@
   // =====================================================================================
 
   var $ = function (id) { return document.getElementById(id); };
-  var pages = ['monthView', 'yearView', 'settingsPage', 'installPage', 'autostartPage', 'welcomePage'];
+  var pages = ['monthView', 'yearView', 'settingsPage', 'installPage', 'autostartPage', 'welcomePage', 'installedPage'];
   var currentPage = 'monthView';
   var activeMonth = new Date(today().getFullYear(), today().getMonth(), 1);
   var activeYear = today().getFullYear();
@@ -651,7 +657,7 @@
   // =====================================================================================
 
   function openSubPage(id) {
-    subPageReturn = currentPage === 'welcomePage' ? 'welcomePage' : 'settingsPage';
+    subPageReturn = currentPage === 'welcomePage' || currentPage === 'installedPage' ? currentPage : 'settingsPage';
     fillHelpPages();
     showPage(id);
   }
@@ -721,6 +727,42 @@
   $('welcomeOk').addEventListener('click', function () {
     if (welcomeFromSettings) showPage('settingsPage'); else showCalendar();
   });
+
+  // Shown once, on the first start as an installed app. Edge asks at that moment whether the app may
+  // create a desktop shortcut and start when you sign in, so explain both and recommend Allow.
+  function showInstalledPage() {
+    var edge = browserKind() === 'edge';
+    $('installedTitle').textContent = T('QuickCal is installed', 'QuickCal er installert');
+    $('installedIntro').textContent = edge
+      ? T('Edge now asks what QuickCal may do. We recommend ticking both and clicking Allow:',
+          'Edge spør nå hva QuickCal skal få lov til. Vi anbefaler å krysse av for begge og trykke Tillat:')
+      : T('Two things make QuickCal work best:', 'To ting gjør at QuickCal fungerer best:');
+    var steps = [];
+    if (edge) {
+      steps.push(T('Create desktop shortcut: a QuickCal icon on the desktop.',
+                   'Opprett skrivebordssnarvei: et QuickCal-ikon på skrivebordet.'));
+    }
+    steps.push(edge
+      ? T('Start automatically on device login: QuickCal opens when you sign in, so the week number is always on the taskbar.',
+          'Starter automatisk ved enhetspålogging: QuickCal åpnes når du logger på, så ukenummeret alltid står på oppgavelinjen.')
+      : T('Start automatically when you sign in: see “Start automatically” in the settings.',
+          'Start automatisk når du logger på: se «Start automatisk» under innstillinger.'));
+    steps.push(T('Pin to taskbar: right-click the QuickCal icon on the taskbar and choose “Pin to taskbar”.',
+                 'Fest til oppgavelinjen: høyreklikk QuickCal-ikonet på oppgavelinjen og velg «Fest til oppgavelinjen».'));
+    setList('installedSteps', steps);
+    $('installedTip').textContent = edge
+      ? T('Clicked Allow too quickly? You can change the choices at any time:',
+          'Trykket du Tillat for fort? Du kan endre valgene når som helst:')
+      : '';
+    $('installedChangeBtn').textContent = T('Change the choices', 'Endre valgene');
+    $('installedChangeBtn').classList.toggle('hidden', !edge);
+    subPageReturn = 'calendar';
+    showPage('installedPage');
+    settings.appAutostartShown = true;
+    saveSettings();
+  }
+  $('installedChangeBtn').addEventListener('click', function () { openSubPage('autostartPage'); });
+  $('installedOk').addEventListener('click', showCalendar);
 
   function setList(id, items) {
     var ol = $(id);
@@ -937,7 +979,14 @@
   // reloading it, so size the window when the display mode switches to app mode.
   if (window.matchMedia) {
     var appMode = matchMedia('(display-mode: standalone)');
-    var onModeChange = function () { if (isInstalled()) { settings.appMaximized = false; startAppSizing(); } applyTexts(); };
+    var onModeChange = function () {
+      applyTexts();
+      if (isInstalled()) {
+        settings.appMaximized = false;
+        startAppSizing();
+        if (!settings.appAutostartShown) showInstalledPage();
+      }
+    };
     if (appMode.addEventListener) appMode.addEventListener('change', onModeChange);
     else if (appMode.addListener) appMode.addListener(onModeChange);
   }
@@ -951,11 +1000,7 @@
     showWelcome();
   } else if (!settings.appAutostartShown) {
     // Installed app: never the Getting started page on start (it would show after every reboot),
-    // only once the autostart help on the first start as an app
-    fillHelpPages();
-    subPageReturn = 'calendar';
-    showPage('autostartPage');
-    settings.appAutostartShown = true;
-    saveSettings();
+    // only once, on the first start as an app, the page about Edge's choices and pinning
+    showInstalledPage();
   }
 })();
