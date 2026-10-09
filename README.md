@@ -10,7 +10,7 @@ QuickCal is free and open source. It comes in two versions:
 | Install | One click, as an app in Microsoft Edge or Google Chrome | Nothing to install. Runs from any folder or USB stick |
 | Week number always visible | On the QuickCal icon on the taskbar | On an icon by the clock |
 | Start automatically | Yes, turned on in the browser's app settings | Yes, one click in the app |
-| Always on top | Yes, in Edge or Chrome on a PC: the pin button opens the calendar in a small window that stays on top | Yes, in a compact two-month view |
+| Always on top | Yes, in Edge or Chrome on a PC: the pin button opens the calendar in a small window that stays on top | Yes, the pin button keeps the window on top |
 
 ## Features
 
