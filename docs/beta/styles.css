@@ -124,6 +124,8 @@ button { font-family: inherit; color: inherit; }
 .cell.note::after { content: ""; position: absolute; top: 1px; right: 1px; width: 32%; height: 36%; max-width: 9px; max-height: 10px; pointer-events: none;
   background: no-repeat center / contain url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 12'%3E%3Cpath d='M1 1.5h6l2 2V11H1z' fill='%23fff8c4' stroke='%23333' stroke-width='.9'/%3E%3Cpath d='M2.8 5h4.4M2.8 7h4.4M2.8 9h3' stroke='%23333' stroke-width='.8'/%3E%3C/svg%3E"); }
 .cell.noteColored { color: #fff; }
+/* Two notes on a day: one colored and one plain half */
+.cell.noteMixed { color: #111; text-shadow: 0 0 2px #fff, 0 0 3px #fff; }
 /* Holiday, today or birthday with a colored note: the color shows as a corner mark, the day keeps its look */
 .cell.noteCorner { background-image: linear-gradient(225deg, var(--note-color) 0 28%, transparent 28%); }
 .cell.today.gold.noteCorner { background-image: linear-gradient(225deg, var(--note-color) 0 28%, transparent 28%), linear-gradient(rgba(255,255,255,.2), rgba(255,255,255,.2)), url("../assets/gold_texture.jpg"); background-size: auto, auto, 100% 100%; }
@@ -131,6 +133,8 @@ button { font-family: inherit; color: inherit; }
 
 .tooltip.noteTip { white-space: pre-wrap; max-width: 280px; line-height: 1.35; }
 .tipHoliday { font-weight: 600; margin-bottom: 2px; }
+.tipNote.tipMarked { border-left: 3px solid #bbb; padding-left: 5px; }
+.tipNote.tipSecond { margin-top: 5px; padding-top: 4px; border-top: 1px solid #ddd; }
 .tipImages img { display: block; max-width: 260px; max-height: 140px; margin-top: 4px; }
 
 .noteEditor { position: fixed; z-index: 20; width: min(340px, calc(100vw - 16px)); background: #fff; border: 1px solid #888; border-radius: 4px;
