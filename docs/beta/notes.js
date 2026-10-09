@@ -451,7 +451,9 @@ window.QuickCalNotes = (function () {
     var rep = el('button', 'neBtn neRepeatBtn', '↻'); rep.title = T('Repeat', 'Gjenta');
     row.appendChild(rep);
     var addImg = el('button', 'neBtn', '🖼'); addImg.title = T('Add picture (or paste with Ctrl+V)', 'Legg til bilde (eller lim inn med Ctrl+V)');
-    var del = el('button', 'neBtn neDelete', '🗑'); del.title = T('Delete note', 'Slett notat');
+    var del = el('button', 'neBtn neDelete'); del.title = T('Delete note', 'Slett notat');
+    // A drawn bin in black, like the other buttons (the 🗑 emoji is pale grey on Windows)
+    del.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6.5h16M9.5 6.5V4h5v2.5M6.5 6.5l1 13.5h9l1-13.5M10 10v7m4-7v7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
     row.appendChild(addImg);
     row.appendChild(del);
     box.appendChild(row);

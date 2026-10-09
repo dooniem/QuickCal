@@ -262,3 +262,5 @@ html.pipActive #stage { visibility: hidden; }
 .nhBox ul { margin: 2px 0; padding-left: 18px; }
 .nhBox li { margin: 2px 0; }
 .nhSmall { color: #555; font-size: 11px; }
+.neDelete { color: #000; display: inline-flex; align-items: center; justify-content: center; }
+.neDelete svg { width: 17px; height: 17px; }
