@@ -177,14 +177,13 @@ window.QuickCalNotes = (function () {
     closePeek();
     var k = key(date), n = index[k];
     var box = el('div', 'notePeek');
-    var head = el('div', 'npHead');
-    head.appendChild(el('span', 'neTitle', deps.dayTitle(date)));
-    if (holidayText) head.appendChild(el('span', 'neHoliday', holidayText));
-    box.appendChild(head);
-    if (n && n.text.trim()) box.appendChild(el('div', 'npText', n.text.trim()));
-    var open = el('button', 'npOpen', n ? T('✎ Open note', '✎ Åpne notat') : T('✎ Write a note', '✎ Skriv notat'));
+    // Just a pen button (the picked day already has a black frame), plus the holiday name if the day has one
+    var open = el('button', 'npOpen', '✎');
+    open.title = n ? T('Open note', 'Åpne notat') : T('Write a note', 'Skriv notat');
+    open.setAttribute('aria-label', open.title);
     open.addEventListener('click', function (e) { e.stopPropagation(); closePeek(); openEditor(cell, date, holidayText); });
     box.appendChild(open);
+    if (holidayText) box.appendChild(el('span', 'npHoliday', holidayText));
     box.addEventListener('click', closePeek);   // a click on the box itself (not the button) just closes it
     document.body.appendChild(box);
     cell.classList.add('picked');
