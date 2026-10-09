@@ -292,7 +292,8 @@ window.QuickCalNotes = (function () {
     box.appendChild(file);
     var hint = el('div', 'neHint', deps.isTouch()
       ? T('Saved automatically. Kept for 3 months.', 'Lagres automatisk. Tas vare på i 3 måneder.')
-      : T('Saved automatically. Paste pictures with Ctrl+V. Kept for 3 months.', 'Lagres automatisk. Lim inn bilder med Ctrl+V. Tas vare på i 3 måneder.'));
+      : T('Saved automatically. Paste pictures with Ctrl+V. Kept for 3 months. Ctrl+Enter saves and closes.',
+          'Lagres automatisk. Lim inn bilder med Ctrl+V. Tas vare på i 3 måneder. Ctrl+Enter lagrer og lukker.'));
     box.appendChild(hint);
 
     var note = { date: k, text: '', color: '', images: [], endDate: '' };
@@ -359,6 +360,10 @@ window.QuickCalNotes = (function () {
       closeEditor();
     });
     x.addEventListener('click', closeEditor);
+    // Ctrl+Enter: save and close (no new line in the text)
+    box.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); e.stopPropagation(); closeEditor(); }
+    });
 
     // Focus right away (inside the click, so phones show the keyboard), so nothing typed is lost.
     // On a phone an existing note opens for reading first; tap the text to edit.
