@@ -113,3 +113,11 @@ button { font-family: inherit; color: inherit; }
 .menu div:hover { background: #e5f1fb; }
 .menu div.current::before { content: "✓"; position: absolute; left: 7px; }
 .tooltip { position: fixed; z-index: 11; background: #fff; border: 1px solid #888; padding: 3px 7px; font-size: 12px; box-shadow: 0 2px 6px rgba(0,0,0,.15); pointer-events: none; white-space: nowrap; }
+
+/* Bottom row: hint text, Settings and tagline sit on the same line at the bottom, clear of a 6-week month */
+.bottomRow.three { align-items: end; grid-template-rows: 20px; }
+.bottomRow.three > * { grid-row: 1; }
+.bottomRow .fitLeft { display: flex; align-items: flex-end; align-self: stretch; }
+.bottomRow .smallInfo { line-height: 1.25; vertical-align: bottom; padding-bottom: 2px; }
+.bottomRow .tagline { line-height: 1.25; padding-bottom: 2px; }
+.bottomRow .right { padding-bottom: 2px; }

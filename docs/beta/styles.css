@@ -172,3 +172,12 @@ button { font-family: inherit; color: inherit; }
 .touch .npOpen { width: 34px; height: 30px; font-size: 18px; }
 .npHoliday { padding-right: 5px; white-space: nowrap; }
 .cell.picked { box-shadow: inset 0 0 0 2px #000; }
+
+/* Bottom row: hint text, Settings and tagline sit on the same line at the bottom, clear of a 6-week month */
+.bottomRow.three { align-items: end; grid-template-rows: 20px; }
+.bottomRow.three > * { grid-row: 1; }
+.bottomRow .fitLeft { display: flex; align-items: flex-end; align-self: stretch; }
+.bottomRow .smallInfo { line-height: 1.25; vertical-align: bottom; padding-bottom: 2px; }
+.bottomRow .tagline { line-height: 1.25; padding-bottom: 2px; }
+.bottomRow .right { gap: 4px; padding-bottom: 2px; }
+.linkBox.notesBtn { padding: 0 3px; }
