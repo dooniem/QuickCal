@@ -169,8 +169,12 @@ button { font-family: inherit; color: inherit; }
 .noteDate { white-space: nowrap; }
 .noteFirst { white-space: pre-wrap; overflow-wrap: anywhere; min-width: 0; color: #333; }
 .noteRow { align-items: start; }
-.noteRemove { background: transparent; border: 0; cursor: pointer; font-size: 12px; padding: 0 2px; }
-.notesList { margin-top: 8px; }
+.noteRemove { background: transparent; border: 0; border-radius: 3px; cursor: pointer; padding: 1px; width: 18px; height: 18px; color: #111; justify-self: end; }
+.noteRemove:hover { background: rgba(8,8,8,.12); }
+.noteRemove svg { display: block; width: 100%; height: 100%; }
+.noteMeta { display: flex; justify-content: flex-end; gap: 10px; white-space: nowrap; color: #555; }
+/* Some air between the search row (and Delete all) and the first note */
+.notesList { margin-top: 20px; height: 122px; }
 .notePeek { position: fixed; z-index: 19; display: flex; align-items: center; gap: 5px; max-width: min(260px, calc(100vw - 16px)); background: #fff;
   border: 1px solid #888; border-radius: 4px; box-shadow: 0 2px 8px rgba(0,0,0,.2); padding: 2px; font-size: 11.5px; font-family: var(--font); }
 .npOpen { background: rgba(8,8,8,.1); border: 0; border-radius: 3px; width: 24px; height: 22px; padding: 0; font-size: 14px; line-height: 22px; cursor: pointer; }
@@ -236,7 +240,7 @@ html.pipActive #stage { visibility: hidden; }
 /* Beta: checklists and color names */
 .neCheck { font-size: 14px; }
 .noteTasks { color: #555; white-space: nowrap; }
-.noteRow { grid-template-columns: 14px 158px 1fr auto auto auto; }
+.noteRow { grid-template-columns: 14px 158px 1fr 72px 18px; }
 .notesColorsMenu { left: 288px; padding: 2px 6px 4px; gap: 1px; }
 .ncTitle { font-size: 11px; font-weight: 600; }
 .ncRow { display: flex; align-items: center; gap: 6px; }
@@ -276,7 +280,7 @@ html.pipActive #stage { visibility: hidden; }
 .neDelete { color: #000; display: inline-flex; align-items: center; justify-content: center; }
 .neDelete svg { width: 17px; height: 17px; }
 /* Beta: notes list in a maximized window fills the window */
-#notesPage.full .notesList { height: calc(100% - 92px); }
+#notesPage.full .notesList { height: calc(100% - 104px); }
 #notesPage.full .noteRow { font-size: 12.5px; padding: 3px 4px; }
 .noteThumbs { display: none; }
 #notesPage.full .noteThumbs { display: flex; flex-wrap: wrap; gap: 4px; margin: 3px 0 2px; }
