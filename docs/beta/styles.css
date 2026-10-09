@@ -250,3 +250,4 @@ html.pipActive #stage { visibility: hidden; }
 .nrMuted { color: #777; }
 .nrNext { color: #333; font-size: 11px; display: block; }
 .noteEditor { max-height: calc(100vh - 8px); overflow-y: auto; box-sizing: border-box; }
+.backupHint { position: absolute; left: 70px; right: 155px; bottom: 6px; margin: 0; font-size: 10px; color: #666; line-height: 1.25; }
