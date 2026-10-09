@@ -434,17 +434,49 @@ window.QuickCalNotes = (function () {
   }
   function refreshList() { if (tools) fillList(tools.list, tools.empty); }
 
+  // Excel: the list as shown (search and color filter), with the pictures placed in their own cells
   function exportList() {
     var keys = filteredKeys();
-    var rows = [[T('Date', 'Dato'), T('Day', 'Dag'), T('Week', 'Uke'), T('Color', 'Farge'), T('Note', 'Notat'), T('Pictures', 'Bilder')]];
-    keys.forEach(function (k) {
-      var n = index[k], d = parseKey(k);
-      rows.push([k, deps.dayTitle(d), deps.isoWeek ? deps.isoWeek(d) : '', colorName(n.color), n.text.trim(), n.images || '']);
-    });
-    var blob = window.QuickCalXlsx.write(rows, { sheet: T('Notes', 'Notater'), widths: [12, 28, 6, 10, 60, 7], wrap: [4] });
-    var t = new Date();
-    window.QuickCalXlsx.download(blob, 'QuickCal-' + T('notes', 'notater') + '-' + key(t) + '.xlsx');
+    if (!keys.length) return;
+    tools.exportBtn.disabled = true;
+    getAll().then(function (all) {
+      var byDate = {};
+      all.forEach(function (n) { byDate[n.date] = n; });
+      var maxPics = 0;
+      keys.forEach(function (k) { maxPics = Math.max(maxPics, ((byDate[k] && byDate[k].images) || []).length); });
+      var head = [T('Date', 'Dato'), T('Day', 'Dag'), T('Week', 'Uke'), T('Color', 'Farge'), T('Note', 'Notat')];
+      for (var i = 0; i < maxPics; i++) head.push(T('Picture ', 'Bilde ') + (i + 1));
+      var rows = [head], images = [], rowHeights = {}, jobs = [];
+      keys.forEach(function (k, r) {
+        var n = byDate[k] || { text: index[k].text, color: index[k].color, images: [] }, d = parseKey(k);
+        var row = [d, cap(d.toLocaleDateString(lang(), { weekday: 'long' })), deps.isoWeek(d), colorName(n.color), (n.text || '').trim()];
+        for (var j = 0; j < maxPics; j++) row.push('');
+        rows.push(row);
+        (n.images || []).forEach(function (blob, j) {
+          rowHeights[r + 1] = 90;
+          jobs.push(picture(blob).then(function (p) {
+            if (p) images.push({ row: r + 1, col: 5 + j, data: p.data, type: p.type, w: p.w, h: p.h, name: k + ' ' + (j + 1) });
+          }));
+        });
+      });
+      return Promise.all(jobs).then(function () {
+        var widths = [10, 10, 6, 10, 50];
+        for (var i = 0; i < maxPics; i++) widths.push(22);
+        var blob = window.QuickCalXlsx.write(rows, { sheet: T('Notes', 'Notater'), widths: widths, wrap: [4], images: images, rowHeights: rowHeights });
+        window.QuickCalXlsx.download(blob, 'QuickCal-' + T('notes', 'notater') + '-' + key(new Date()) + '.xlsx');
+      });
+    }).catch(function (e) { if (window.console) console.error(e); })
+      .then(function () { tools.exportBtn.disabled = !filteredKeys().length; });
   }
+  function picture(blob) {
+    return Promise.all([blob.arrayBuffer(), createImageBitmap(blob)]).then(function (r) {
+      var p = { data: new Uint8Array(r[0]), type: blob.type === 'image/png' ? 'image/png' : 'image/jpeg', w: r[1].width, h: r[1].height };
+      if (r[1].close) r[1].close();
+      return p;
+    }).catch(function () { return null; });
+  }
+  function lang() { return T('en', 'nb'); }
+  function cap(t) { return t.charAt(0).toUpperCase() + t.slice(1); }
 
   function fillList(listEl, emptyEl) {
     listEl.innerHTML = '';
