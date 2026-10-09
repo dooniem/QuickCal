@@ -617,9 +617,12 @@
     closePopups();
     var max = isMaximized();
     // Installed app: remember the size, like the Windows version does
-    if (appSizeReady && isInstalled()) {
+    // (not while "Always on top" has shrunk this window, see pip.js)
+    var floating = function () { return document.documentElement.classList.contains('pipActive'); };
+    if (appSizeReady && isInstalled() && !floating()) {
       clearTimeout(saveSizeTimer);
       saveSizeTimer = setTimeout(function () {
+        if (floating()) return;
         settings.appMaximized = isMaximized();
         if (!settings.appMaximized) settings.appSize = { w: window.innerWidth, h: window.innerHeight };
         saveSettings();
