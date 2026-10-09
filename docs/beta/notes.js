@@ -378,10 +378,85 @@ window.QuickCalNotes = (function () {
   // List of all notes (Settings → Notes)
   // =====================================================================================
 
+  // ---------- Notes page: search, color filter and Excel export ----------
+  // Live search: notes whose text contains what is typed (any case). Color filter: none checked = all colors;
+  // '' stands for notes without a color. Both apply together. Kept while the app is open.
+  var filter = { q: '', colors: [] };
+  function filteredKeys() {
+    var q = filter.q.trim().toLowerCase();
+    return Object.keys(index).sort().filter(function (k) {
+      var n = index[k];
+      if (filter.colors.length && filter.colors.indexOf(n.color || '') < 0) return false;
+      return !q || n.text.toLowerCase().indexOf(q) >= 0;
+    });
+  }
+  function colorName(id) {
+    for (var i = 0; i < COLORS.length; i++) if (COLORS[i].id === id) return T(COLORS[i].en, COLORS[i].no);
+    return '';
+  }
+
+  var tools = null;   // { search, filterBtn, filterMenu, exportBtn, list, empty }
+  function listTools(t) {
+    tools = t;
+    t.search.addEventListener('input', function () { filter.q = t.search.value; refreshList(); });
+    t.filterBtn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      if (t.filterMenu.classList.contains('hidden')) { fillFilterMenu(); t.filterMenu.classList.remove('hidden'); }
+      else t.filterMenu.classList.add('hidden');
+    });
+    t.filterMenu.addEventListener('click', function (e) { e.stopPropagation(); });
+    document.addEventListener('click', function () { t.filterMenu.classList.add('hidden'); });
+    t.exportBtn.addEventListener('click', exportList);
+  }
+  function fillFilterMenu() {
+    var m = tools.filterMenu;
+    m.innerHTML = '';
+    function row(label, dotHex, on, plain, onClick) {
+      var r = el('button', 'nfRow' + (on ? ' on' : ''));
+      r.appendChild(el('span', 'nfCheck', on ? '✓' : ''));
+      if (dotHex !== null) {
+        var dot = el('span', 'noteDot' + (plain ? ' plain' : ''));
+        if (dotHex) dot.style.background = dotHex;
+        r.appendChild(dot);
+      }
+      r.appendChild(el('span', '', label));
+      r.addEventListener('click', function () { onClick(); fillFilterMenu(); refreshList(); });
+      m.appendChild(r);
+    }
+    row(T('All colors', 'Alle farger'), null, !filter.colors.length, false, function () { filter.colors = []; });
+    COLORS.concat([{ id: '', en: 'No color', no: 'Uten farge' }]).forEach(function (c) {
+      var on = filter.colors.indexOf(c.id) >= 0;
+      row(T(c.en, c.no), c.hex || '', on, !c.id, function () {
+        if (on) filter.colors = filter.colors.filter(function (x) { return x !== c.id; });
+        else filter.colors = filter.colors.concat([c.id]);
+      });
+    });
+  }
+  function refreshList() { if (tools) fillList(tools.list, tools.empty); }
+
+  function exportList() {
+    var keys = filteredKeys();
+    var rows = [[T('Date', 'Dato'), T('Day', 'Dag'), T('Week', 'Uke'), T('Color', 'Farge'), T('Note', 'Notat'), T('Pictures', 'Bilder')]];
+    keys.forEach(function (k) {
+      var n = index[k], d = parseKey(k);
+      rows.push([k, deps.dayTitle(d), deps.isoWeek ? deps.isoWeek(d) : '', colorName(n.color), n.text.trim(), n.images || '']);
+    });
+    var blob = window.QuickCalXlsx.write(rows, { sheet: T('Notes', 'Notater'), widths: [12, 28, 6, 10, 60, 7], wrap: [4] });
+    var t = new Date();
+    window.QuickCalXlsx.download(blob, 'QuickCal-' + T('notes', 'notater') + '-' + key(t) + '.xlsx');
+  }
+
   function fillList(listEl, emptyEl) {
     listEl.innerHTML = '';
-    var keys = Object.keys(index).sort();
-    emptyEl.classList.toggle('hidden', keys.length > 0);
+    var all = Object.keys(index).length, keys = filteredKeys();
+    emptyEl.classList.toggle('hidden', all > 0);
+    if (tools) {
+      var active = filter.colors.length > 0;
+      tools.filterBtn.classList.toggle('active', active);
+      tools.filterBtn.querySelector('.nfCount').textContent = active ? String(filter.colors.length) : '';
+      tools.exportBtn.disabled = !keys.length;
+    }
+    if (all && !keys.length) listEl.appendChild(el('div', 'noteNoMatch', T('No notes match.', 'Ingen notater passer.')));
     keys.forEach(function (k) {
       var n = index[k], d = parseKey(k);
       var row = el('div', 'noteRow');
@@ -435,6 +510,7 @@ window.QuickCalNotes = (function () {
     closePeek: closePeek,
     isPeekOpen: isPeekOpen,
     fillList: fillList,
+    listTools: listTools,
     deleteAll: deleteAll,
     count: function () { return Object.keys(index).length; },
     reload: function () {   // notes may have been changed in the "Always on top" window

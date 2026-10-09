@@ -76,10 +76,16 @@
       <section id="notesPage" class="page hidden textPage" data-w="600" data-h="220">
         <h1 id="notesTitle"></h1>
         <button class="btn topRight" id="notesDeleteAll"></button>
+        <div class="notesTools hidden" id="notesTools">
+          <label class="notesSearch"><svg viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6" fill="none" stroke="currentColor" stroke-width="2"/><path d="m15 15 5.5 5.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg><input id="notesSearch" type="search" autocomplete="off" spellcheck="false"></label>
+          <button class="notesFilterBtn" id="notesFilterBtn"><svg viewBox="0 0 24 24"><path d="M3.5 5h17l-6.5 7.5v6l-4 2v-8z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg><span class="nfCount"></span></button>
+          <div class="notesFilterMenu hidden" id="notesFilterMenu"></div>
+        </div>
         <p id="notesEmpty"></p>
         <p id="notesInstallInfo" class="notesInstallInfo"></p>
         <button class="btn inline hidden" id="notesInstallBtn"></button>
         <div id="notesList" class="notesList"></div>
+        <button class="btn exportBtn hidden" id="notesExport"><svg viewBox="0 0 24 24"><rect x="2.5" y="3" width="19" height="18" rx="2.5" fill="#1d6f42"/><path d="m8 7.5 8 9m0-9-8 9" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/></svg></button>
         <button class="btn back" id="notesBack" aria-label="Back"><svg viewBox="0 0 24 24"><path d="M20 12H5m6-7-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.2"/></svg></button>
       </section>
 
@@ -143,6 +149,7 @@
   <div id="tooltip" class="tooltip hidden"></div>
 
   <script src="pip.js"></script>
+  <script src="xlsx.js"></script>
   <script src="notes.js"></script>
   <script src="app.js"></script>
 </body>
