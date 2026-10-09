@@ -32,6 +32,8 @@ window.QuickCalNotes = (function () {
   var BOX = /^[☐☑] ?/;      // checklist line
   var editor = null;        // open editor state
 
+  // A drawn bin in black, like the other buttons (the 🗑 emoji is pale grey on Windows)
+  var BIN_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6.5h16M9.5 6.5V4h5v2.5M6.5 6.5l1 13.5h9l1-13.5M10 10v7m4-7v7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
   function T(en, no) { return deps.T(en, no); }
   function pad(n) { return (n < 10 ? '0' : '') + n; }
   function key(d) { return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
@@ -545,7 +547,7 @@ window.QuickCalNotes = (function () {
     var addImg = el('button', 'neBtn', '🖼'); addImg.title = T('Add picture (or paste with Ctrl+V)', 'Legg til bilde (eller lim inn med Ctrl+V)');
     var del = el('button', 'neBtn neDelete'); del.title = T('Delete note', 'Slett notat');
     // A drawn bin in black, like the other buttons (the 🗑 emoji is pale grey on Windows)
-    del.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6.5h16M9.5 6.5V4h5v2.5M6.5 6.5l1 13.5h9l1-13.5M10 10v7m4-7v7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    del.innerHTML = BIN_SVG;
     row.appendChild(addImg);
     row.appendChild(del);
     box.appendChild(row);
@@ -1183,9 +1185,13 @@ window.QuickCalNotes = (function () {
       row.appendChild(body);
       if (n.images) addThumbs(body, k);
       var tasks = n.text.match(/^[☐☑]/gm);
-      if (tasks) row.appendChild(el('span', 'noteTasks', '☑ ' + tasks.filter(function (t) { return t === '☑'; }).length + '/' + tasks.length));
-      if (n.images) row.appendChild(el('span', 'noteImgs', '🖼' + (n.images > 1 ? n.images : '')));
-      var rm = el('button', 'noteRemove', '🗑'); rm.title = T('Delete note', 'Slett notat');
+      // Checklist and pictures in their own column, so the bin is always in the same place at the right
+      var meta = el('span', 'noteMeta');
+      if (tasks) meta.appendChild(el('span', 'noteTasks', '☑ ' + tasks.filter(function (t) { return t === '☑'; }).length + '/' + tasks.length));
+      if (n.images) meta.appendChild(el('span', 'noteImgs', '🖼' + (n.images > 1 ? n.images : '')));
+      row.appendChild(meta);
+      var rm = el('button', 'noteRemove'); rm.title = T('Delete note', 'Slett notat');
+      rm.innerHTML = BIN_SVG;
       rm.addEventListener('click', function (e) {
         e.stopPropagation();
         snapshot([k]).then(function (undo) {
