@@ -352,6 +352,12 @@
     if (PIP) return false;
     return window.outerWidth >= screen.availWidth - 16 && window.outerHeight >= screen.availHeight - 16;
   }
+  // Full screen height counts as large too: a window snapped to one half of the screen (Win+←/→,
+  // or one side of an ultrawide screen) shows the whole year, like a maximized one
+  function isLarge() {
+    if (PIP) return false;
+    return isMaximized() || window.outerHeight >= screen.availHeight - 16;
+  }
   function isCalendarPage(id) { return id === 'monthView' || id === 'yearView'; }
 
   // Year view: 4 x 3 months on a PC screen, 3 x 4 on phones and tablets (they are held upright).
@@ -406,7 +412,7 @@
   // Notes list: fills a maximized window (like the year view), the usual small page otherwise
   var NOTES_ZOOM = 1.25;
   function notesLayout() {
-    var page = $('notesPage'), full = isMaximized() && !touchOnly();
+    var page = $('notesPage'), full = isLarge() && !touchOnly();
     page.classList.toggle('full', full);
     page.dataset.w = full ? Math.round(window.innerWidth / NOTES_ZOOM) : 600;
     page.dataset.h = full ? Math.round(window.innerHeight / NOTES_ZOOM) : 220;
@@ -420,14 +426,14 @@
     var w = +page.dataset.w, h = +page.dataset.h;
     var s = Math.min(window.innerWidth / w, window.innerHeight / h);
     // Text pages in a maximized window: natural size, centered (not blown up)
-    if (!isCalendarPage(currentPage) && currentPage !== 'notesPage' && isMaximized()) s = Math.min(s, 1);
+    if (!isCalendarPage(currentPage) && currentPage !== 'notesPage' && isLarge()) s = Math.min(s, 1);
     scaler.style.transform = 'scale(' + s + ')';
     scaler.style.left = Math.max(0, (window.innerWidth - w * s) / 2) + 'px';
     scaler.style.top = Math.max(0, (window.innerHeight - h * s) / 2) + 'px';
   }
 
   function showCalendar() {
-    if (isMaximized()) { showPage('yearView'); renderYearView(); }
+    if (isLarge()) { showPage('yearView'); renderYearView(); }
     else { showPage('monthView'); renderMonthView(); }
   }
 
@@ -649,11 +655,11 @@
   $('yearForward').addEventListener('click', function () { changeYear(1); });
 
   // ---------- Window behaviour ----------
-  var wasMaximized = isMaximized();
+  var wasMaximized = isLarge();   // maximized or full height
   var appSizeReady = false, saveSizeTimer = null;
   window.addEventListener('resize', function () {
     closePopups();
-    var max = isMaximized();
+    var max = isLarge();
     // Installed app: remember the size, like the Windows version does
     // (not while "Always on top" has shrunk this window, see pip.js)
     var floating = function () { return document.documentElement.classList.contains('pipActive'); };
