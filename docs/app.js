@@ -1086,6 +1086,11 @@
   applyTexts();
   updateBadge(true);
   resetToToday();
+  // Clicking the QuickCal icon while the app is already open brings that window forward (manifest
+  // launch_handler: focus-existing) instead of opening a second one. Show today, as on a fresh start.
+  if ('launchQueue' in window) {
+    try { window.launchQueue.setConsumer(function () { if (isCalendarPage(currentPage)) resetToToday(); }); } catch (e) { /* not supported */ }
+  }
 
   // For pip.js, which brings the calendar back here when the floating window closes
   window.QuickCalApp = {
