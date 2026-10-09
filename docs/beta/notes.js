@@ -1039,7 +1039,9 @@ window.QuickCalNotes = (function () {
       if (n.end && !n.repeat) { var e = parseKey(n.end); dateCell.appendChild(el('span', 'noteEnd', ' → ' + e.getDate() + '.' + (e.getMonth() + 1) + '.')); }
       row.appendChild(dateCell);
       var all = n.text.replace(/^\s*\n|\s+$/g, '') || (n.images ? T('(picture)', '(bilde)') : '');   // the whole note, every line
-      row.appendChild(el('span', 'noteFirst', all));
+      var body = el('span', 'noteFirst', all);
+      row.appendChild(body);
+      if (n.images) addThumbs(body, k);
       var tasks = n.text.match(/^[☐☑]/gm);
       if (tasks) row.appendChild(el('span', 'noteTasks', '☑ ' + tasks.filter(function (t) { return t === '☑'; }).length + '/' + tasks.length));
       if (n.images) row.appendChild(el('span', 'noteImgs', '🖼' + (n.images > 1 ? n.images : '')));
@@ -1055,6 +1057,22 @@ window.QuickCalNotes = (function () {
       });
       listEl.appendChild(row);
     });
+  }
+
+  // Small pictures under the text, all the same size (shown only when the list fills the window, see styles.css).
+  // A click on one goes on to the row: the note opens in the calendar, pictures at their own size.
+  function addThumbs(body, k) {
+    getNote(k).then(function (n) {
+      if (!n || !n.images || !n.images.length) return;
+      var box = el('span', 'noteThumbs');
+      n.images.forEach(function (b) {
+        var img = el('img');
+        img.src = URL.createObjectURL(b);
+        img.onload = img.onerror = function () { URL.revokeObjectURL(img.src); };
+        box.appendChild(img);
+      });
+      body.appendChild(box);
+    }).catch(function () {});
   }
 
   // ---------- Backup: all notes, pictures and color names in one file, and restore from it ----------
