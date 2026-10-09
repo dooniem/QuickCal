@@ -370,6 +370,7 @@
       $(id).dataset.w = L.w;
       $(id).dataset.h = L.h;
     }
+    if (id === 'notesPage') notesLayout();
     pages.forEach(function (p) { $(p).classList.toggle('hidden', p !== id); });
     currentPage = id;
     var page = $(id), scaler = $('scaler');
@@ -402,12 +403,24 @@
     });
   }
 
+  // Notes list: fills a maximized window (like the year view), the usual small page otherwise
+  var NOTES_ZOOM = 1.25;
+  function notesLayout() {
+    var page = $('notesPage'), full = isMaximized() && !touchOnly();
+    page.classList.toggle('full', full);
+    page.dataset.w = full ? Math.round(window.innerWidth / NOTES_ZOOM) : 600;
+    page.dataset.h = full ? Math.round(window.innerHeight / NOTES_ZOOM) : 220;
+    if (currentPage === 'notesPage') {
+      $('scaler').style.width = page.dataset.w + 'px';
+      $('scaler').style.height = page.dataset.h + 'px';
+    }
+  }
   function rescale() {
     var page = $(currentPage), scaler = $('scaler');
     var w = +page.dataset.w, h = +page.dataset.h;
     var s = Math.min(window.innerWidth / w, window.innerHeight / h);
     // Text pages in a maximized window: natural size, centered (not blown up)
-    if (!isCalendarPage(currentPage) && isMaximized()) s = Math.min(s, 1);
+    if (!isCalendarPage(currentPage) && currentPage !== 'notesPage' && isMaximized()) s = Math.min(s, 1);
     scaler.style.transform = 'scale(' + s + ')';
     scaler.style.left = Math.max(0, (window.innerWidth - w * s) / 2) + 'px';
     scaler.style.top = Math.max(0, (window.innerHeight - h * s) / 2) + 'px';
@@ -658,6 +671,7 @@
       // Maximize = whole year, back to normal = 3 months with the current month in the middle
       if (isCalendarPage(currentPage)) { resetToToday(); return; }
     }
+    if (currentPage === 'notesPage') notesLayout();   // maximized: full size, back to normal: small page
     rescale();
   });
 
