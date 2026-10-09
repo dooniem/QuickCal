@@ -147,8 +147,9 @@ button { font-family: inherit; color: inherit; }
 .neThumbX { position: absolute; top: -5px; right: -5px; width: 16px; height: 16px; border-radius: 50%; border: 0; background: #444; color: #fff; font-size: 9px; line-height: 16px; padding: 0; cursor: pointer; }
 .neRow { display: flex; align-items: center; gap: 6px; margin-top: 5px; }
 .neColors { display: flex; gap: 4px; flex: 1; flex-wrap: wrap; }
-.neSwatch { width: 20px; height: 20px; border-radius: 50%; border: 2px solid transparent; box-shadow: 0 0 0 1px #999; cursor: pointer; padding: 0; }
-.neSwatch.none { background: linear-gradient(135deg, #fff 45%, #c00 45% 55%, #fff 55%); }
+.neSwatch { width: 20px; height: 20px; border-radius: 50%; border: 2px solid transparent; box-shadow: 0 0 0 1px #999; cursor: pointer; padding: 0;
+  color: #fff; font: 700 10px/16px var(--font); text-align: center; }
+.neSwatch.none { background: #fff; color: #555; }
 .neSwatch.on { border-color: #fff; box-shadow: 0 0 0 2px #000; }
 .neBtn { background: rgba(8,8,8,.12); border: 0; border-radius: 3px; height: 26px; min-width: 32px; font-size: 15px; cursor: pointer; }
 .neBtn:hover { background: rgba(8,8,8,.22); }
@@ -159,8 +160,8 @@ button { font-family: inherit; color: inherit; }
 .notesList { height: 134px; overflow-y: auto; border-top: 1px solid #ddd; margin-right: 0; }
 .noteRow { display: grid; grid-template-columns: 14px 158px 1fr auto auto; align-items: center; gap: 6px; padding: 2px 4px; border-bottom: 1px solid #eee; font-size: 11.5px; cursor: pointer; }
 .noteRow:hover { background: #e5f1fb; }
-.noteDot { width: 10px; height: 10px; border-radius: 50%; }
-.noteDot.plain { border: 1px solid #888; background: repeating-linear-gradient(135deg, #999 0 1px, #fff 1px 3px); }
+.noteDot { width: 14px; height: 14px; border-radius: 50%; color: #fff; font-size: 9px; font-weight: 700; line-height: 14px; text-align: center; flex: none; box-sizing: border-box; }
+.noteDot.plain { border: 1px solid #888; background: #fff; color: #555; line-height: 12px; }
 .noteDate { white-space: nowrap; }
 .noteFirst { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #333; }
 .noteRemove { background: transparent; border: 0; cursor: pointer; font-size: 12px; padding: 0 2px; }
@@ -228,3 +229,11 @@ html.pipActive #stage { visibility: hidden; }
 .neEnd { font: inherit; font-size: 11.5px; padding: 0 2px; height: 20px; border: 1px solid #999; border-radius: 3px; }
 .tipSpan { font-size: 11px; color: #555; margin-bottom: 2px; }
 .noteEnd { color: #555; }
+/* Beta: checklists and color names */
+.neCheck { font-size: 14px; }
+.noteTasks { color: #555; white-space: nowrap; }
+.noteRow { grid-template-columns: 14px 158px 1fr auto auto auto; }
+.notesColorsMenu { left: 288px; padding: 2px 6px 4px; gap: 1px; }
+.ncTitle { font-size: 11px; font-weight: 600; }
+.ncRow { display: flex; align-items: center; gap: 6px; }
+.ncRow input { width: 150px; font: inherit; font-size: 11.5px; height: 18px; padding: 0 4px; border: 1px solid #999; border-radius: 3px; box-sizing: border-box; }

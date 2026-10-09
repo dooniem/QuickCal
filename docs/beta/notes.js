@@ -26,6 +26,7 @@ window.QuickCalNotes = (function () {
   var index = {};           // 'YYYY-MM-DD' -> { text, color, images (count), end } for drawing the calendar
   var cover = {};           // every day a note covers -> the day it starts on (a note can span several days)
   var MAX_SPAN_DAYS = 62;
+  var BOX = /^[☐☑] ?/;      // checklist line
   var editor = null;        // open editor state
 
   function T(en, no) { return deps.T(en, no); }
@@ -34,6 +35,26 @@ window.QuickCalNotes = (function () {
   function parseKey(k) { var p = k.split('-'); return new Date(+p[0], +p[1] - 1, +p[2]); }
   function addDays(k, n) { var d = parseKey(k); d.setDate(d.getDate() + n); return key(d); }
   function colorHex(id) { for (var i = 0; i < COLORS.length; i++) if (COLORS[i].id === id) return COLORS[i].hex; return null; }
+
+  // Each color has a number (no color = 0, then 1-6) and can be given a name, e.g. "Prosjekt A" or "Ferie".
+  // The names are kept in this browser (and in the backup file).
+  var NAMES_KEY = 'quickcal-beta.noteColorNames';
+  var names = {};
+  try { names = JSON.parse(localStorage.getItem(NAMES_KEY)) || {}; } catch (e) { names = {}; }
+  function saveNames() { try { localStorage.setItem(NAMES_KEY, JSON.stringify(names)); } catch (e) { /* storage blocked */ } }
+  function colorNo(id) { for (var i = 0; i < COLORS.length; i++) if (COLORS[i].id === id) return i + 1; return 0; }
+  function colorDefault(id) {
+    for (var i = 0; i < COLORS.length; i++) if (COLORS[i].id === id) return T(COLORS[i].en, COLORS[i].no);
+    return T('No color', 'Uten farge');
+  }
+  function colorLabel(id) { return (names[id || 'none'] || '').trim() || colorDefault(id); }
+  // A round color dot with its number inside
+  function numberDot(id, cls) {
+    var dot = el('span', cls || 'noteDot', String(colorNo(id)));
+    var hex = colorHex(id);
+    if (hex) dot.style.background = hex; else dot.classList.add('plain');
+    return dot;
+  }
   function el(tag, cls, text) {
     var e = document.createElement(tag);
     if (cls) e.className = cls;
@@ -222,7 +243,7 @@ window.QuickCalNotes = (function () {
     box.addEventListener('click', closePeek);   // a click on the box itself (not the button) just closes it
     document.body.appendChild(box);
     cell.classList.add('picked');
-    peek = { box: box, cell: cell };
+    peek = { box: box, cell: cell, date: date, holidayText: holidayText };
     place(box, cell, true);
   }
   function closePeek() {
@@ -232,6 +253,13 @@ window.QuickCalNotes = (function () {
     peek = null;
   }
   function isPeekOpen() { return !!peek; }
+  // Enter on the keyboard: open the note of the picked day (the one with the small box)
+  function openPicked() {
+    if (!peek || !document.body.contains(peek.cell)) return false;
+    var p = peek;
+    openEditor(p.cell, p.date, p.holidayText);
+    return true;
+  }
 
   function openEditor(cell, date, holidayText) {
     closePeek();
@@ -276,13 +304,15 @@ window.QuickCalNotes = (function () {
 
     var row = el('div', 'neRow');
     var swatches = el('div', 'neColors');
-    var none = el('button', 'neSwatch none'); none.title = T('No color', 'Ingen farge'); none.dataset.color = '';
-    swatches.appendChild(none);
-    COLORS.forEach(function (c) {
-      var b = el('button', 'neSwatch'); b.style.background = c.hex; b.title = T(c.en, c.no); b.dataset.color = c.id;
+    [''].concat(COLORS.map(function (c) { return c.id; })).forEach(function (id) {
+      var b = el('button', 'neSwatch' + (id ? '' : ' none'), String(colorNo(id)));
+      if (id) b.style.background = colorHex(id);
+      b.title = colorNo(id) + ' · ' + colorLabel(id); b.dataset.color = id;
       swatches.appendChild(b);
     });
     row.appendChild(swatches);
+    var check = el('button', 'neBtn neCheck', '☑'); check.title = T('Checklist: tick box on this line', 'Sjekkliste: avkrysningsboks på denne linjen');
+    row.appendChild(check);
     var addImg = el('button', 'neBtn', '🖼'); addImg.title = T('Add picture (or paste with Ctrl+V)', 'Legg til bilde (eller lim inn med Ctrl+V)');
     var del = el('button', 'neBtn neDelete', '🗑'); del.title = T('Delete note', 'Slett notat');
     row.appendChild(addImg);
@@ -291,9 +321,10 @@ window.QuickCalNotes = (function () {
     var file = el('input'); file.type = 'file'; file.accept = 'image/*'; file.multiple = true; file.hidden = true;
     box.appendChild(file);
     var hint = el('div', 'neHint', deps.isTouch()
-      ? T('Saved automatically. Kept for 3 months.', 'Lagres automatisk. Tas vare på i 3 måneder.')
-      : T('Saved automatically. Paste pictures with Ctrl+V. Kept for 3 months. Ctrl+Enter saves and closes.',
-          'Lagres automatisk. Lim inn bilder med Ctrl+V. Tas vare på i 3 måneder. Ctrl+Enter lagrer og lukker.'));
+      ? T('Saved automatically. Kept for 3 months. ☑ makes a checklist: tap a box to tick it.',
+          'Lagres automatisk. Tas vare på i 3 måneder. ☑ lager sjekkliste: trykk på en boks for å krysse av.')
+      : T('Saved automatically. Paste pictures with Ctrl+V. Kept for 3 months. ☑ makes a checklist: click a box to tick it. Ctrl+Enter saves and closes.',
+          'Lagres automatisk. Lim inn bilder med Ctrl+V. Tas vare på i 3 måneder. ☑ lager sjekkliste: klikk på en boks for å krysse av. Ctrl+Enter lagrer og lukker.'));
     box.appendChild(hint);
 
     var note = { date: k, text: '', color: '', images: [], endDate: '' };
@@ -335,6 +366,39 @@ window.QuickCalNotes = (function () {
     }
 
     area.addEventListener('input', function () { note.text = area.value; saveSoon(); });
+    // Checklists: a line that starts with ☐ is a task, ☑ a done task
+    function setText(text, caret) {
+      area.value = text; note.text = text;
+      area.setSelectionRange(caret, caret);
+      saveSoon(0);
+    }
+    check.addEventListener('click', function () {
+      var v = area.value, a = area.selectionStart, b = area.selectionEnd;
+      var start = v.lastIndexOf('\n', a - 1) + 1, end = v.indexOf('\n', b); if (end < 0) end = v.length;
+      var lines = v.slice(start, end).split('\n');
+      var off = lines.every(function (l) { return BOX.test(l); });
+      var block = lines.map(function (l) { return off ? l.replace(BOX, '') : '☐ ' + l; }).join('\n');
+      setText(v.slice(0, start) + block + v.slice(end), start + block.length);
+      area.focus();
+    });
+    area.addEventListener('click', function () {   // click on a box: tick it (or untick)
+      var v = area.value, p = area.selectionStart;
+      if (p !== area.selectionEnd) return;
+      [p, p - 1].some(function (i) {
+        if (i < 0 || (v[i] !== '☐' && v[i] !== '☑') || (i > 0 && v[i - 1] !== '\n')) return false;
+        setText(v.slice(0, i) + (v[i] === '☐' ? '☑' : '☐') + v.slice(i + 1), Math.min(v.length, i + 2));
+        return true;
+      });
+    });
+    area.addEventListener('keydown', function (e) {   // Enter on a task line: the next line is a task too
+      if (e.key !== 'Enter' || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+      var v = area.value, p = area.selectionStart, start = v.lastIndexOf('\n', p - 1) + 1;
+      var line = v.slice(start, p);
+      if (!BOX.test(line) || p !== area.selectionEnd) return;
+      e.preventDefault();
+      if (!line.replace(BOX, '').trim()) setText(v.slice(0, start) + v.slice(p), start);   // empty task: end the list
+      else setText(v.slice(0, p) + '\n☐ ' + v.slice(p), p + 3);
+    });
     endInput.addEventListener('change', function () {
       var v = endInput.value;
       if (!v || v < k) v = k;
@@ -447,10 +511,6 @@ window.QuickCalNotes = (function () {
       return !q || n.text.toLowerCase().indexOf(q) >= 0;
     });
   }
-  function colorName(id) {
-    for (var i = 0; i < COLORS.length; i++) if (COLORS[i].id === id) return T(COLORS[i].en, COLORS[i].no);
-    return '';
-  }
 
   var tools = null;   // { search, filterBtn, filterMenu, exportBtn, list, empty }
   function listTools(t) {
@@ -458,24 +518,34 @@ window.QuickCalNotes = (function () {
     t.search.addEventListener('input', function () { filter.q = t.search.value; refreshList(); });
     t.filterBtn.addEventListener('click', function (e) {
       e.stopPropagation();
+      t.colorsMenu.classList.add('hidden');
       if (t.filterMenu.classList.contains('hidden')) { fillFilterMenu(); t.filterMenu.classList.remove('hidden'); }
       else t.filterMenu.classList.add('hidden');
     });
     t.filterMenu.addEventListener('click', function (e) { e.stopPropagation(); });
     document.addEventListener('click', function () { t.filterMenu.classList.add('hidden'); });
     t.exportBtn.addEventListener('click', exportList);
+    // Color names: a small menu with the numbered colors and a name field for each
+    t.colorsBtn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      t.filterMenu.classList.add('hidden');
+      if (t.colorsMenu.classList.contains('hidden')) { fillColorsMenu(); t.colorsMenu.classList.remove('hidden'); }
+      else t.colorsMenu.classList.add('hidden');
+    });
+    t.colorsMenu.addEventListener('click', function (e) { e.stopPropagation(); });
+    document.addEventListener('click', function () {
+      if (t.colorsMenu.classList.contains('hidden')) return;
+      t.colorsMenu.classList.add('hidden');
+      refreshList();
+    });
   }
   function fillFilterMenu() {
     var m = tools.filterMenu;
     m.innerHTML = '';
-    function row(label, dotHex, on, plain, onClick) {
+    function row(label, dotHex, on, plain, onClick, colorId) {
       var r = el('button', 'nfRow' + (on ? ' on' : ''));
       r.appendChild(el('span', 'nfCheck', on ? '✓' : ''));
-      if (dotHex !== null) {
-        var dot = el('span', 'noteDot' + (plain ? ' plain' : ''));
-        if (dotHex) dot.style.background = dotHex;
-        r.appendChild(dot);
-      }
+      if (dotHex !== null) r.appendChild(numberDot(plain ? '' : colorId));
       r.appendChild(el('span', '', label));
       r.addEventListener('click', function () { onClick(); fillFilterMenu(); refreshList(); });
       m.appendChild(r);
@@ -483,10 +553,28 @@ window.QuickCalNotes = (function () {
     row(T('All colors', 'Alle farger'), null, !filter.colors.length, false, function () { filter.colors = []; });
     COLORS.concat([{ id: '', en: 'No color', no: 'Uten farge' }]).forEach(function (c) {
       var on = filter.colors.indexOf(c.id) >= 0;
-      row(T(c.en, c.no), c.hex || '', on, !c.id, function () {
+      row(colorLabel(c.id), c.hex || '', on, !c.id, function () {
         if (on) filter.colors = filter.colors.filter(function (x) { return x !== c.id; });
         else filter.colors = filter.colors.concat([c.id]);
+      }, c.id);
+    });
+  }
+  function fillColorsMenu() {
+    var m = tools.colorsMenu;
+    m.innerHTML = '';
+    m.appendChild(el('div', 'ncTitle', T('Name the colors', 'Gi fargene navn')));
+    [''].concat(COLORS.map(function (c) { return c.id; })).forEach(function (id) {
+      var r = el('label', 'ncRow');
+      r.appendChild(numberDot(id));
+      var input = el('input'); input.type = 'text'; input.maxLength = 40;
+      input.placeholder = colorDefault(id); input.value = names[id || 'none'] || '';
+      input.addEventListener('input', function () {
+        if (input.value.trim()) names[id || 'none'] = input.value; else delete names[id || 'none'];
+        saveNames();
       });
+      input.addEventListener('keydown', function (e) { if (e.key === 'Enter') { tools.colorsMenu.classList.add('hidden'); refreshList(); } });
+      r.appendChild(input);
+      m.appendChild(r);
     });
   }
   function refreshList() { if (tools) fillList(tools.list, tools.empty); }
@@ -503,25 +591,25 @@ window.QuickCalNotes = (function () {
       all.forEach(function (n) { byDate[n.date] = n; });
       var maxPics = 0;
       keys.forEach(function (k) { maxPics = Math.max(maxPics, ((byDate[k] && byDate[k].images) || []).length); });
-      var head = [T('Date', 'Dato'), T('To', 'Til'), T('Day', 'Dag'), T('Week', 'Uke'), T('Color', 'Farge'), T('Note', 'Notat')];
+      var head = [T('Date', 'Dato'), T('To', 'Til'), T('Day', 'Dag'), T('Week', 'Uke'), T('No.', 'Nr'), T('Color', 'Farge'), T('Note', 'Notat')];
       for (var i = 0; i < maxPics; i++) head.push(T('Picture ', 'Bilde ') + (i + 1));
       var rows = [head], images = [], rowHeights = {}, jobs = [];
       keys.forEach(function (k, r) {
         var n = byDate[k] || { text: index[k].text, color: index[k].color, images: [] }, d = parseKey(k);
-        var row = [d, n.endDate ? parseKey(n.endDate) : '', cap(d.toLocaleDateString(lang(), { weekday: 'long' })), deps.isoWeek(d), colorName(n.color), (n.text || '').trim()];
+        var row = [d, n.endDate ? parseKey(n.endDate) : '', cap(d.toLocaleDateString(lang(), { weekday: 'long' })), deps.isoWeek(d), colorNo(n.color), colorLabel(n.color), (n.text || '').trim()];
         for (var j = 0; j < maxPics; j++) row.push('');
         rows.push(row);
         (n.images || []).forEach(function (blob, j) {
           rowHeights[r + 1] = 90;
           jobs.push(picture(blob).then(function (p) {
-            if (p) images.push({ row: r + 1, col: 6 + j, data: p.data, type: p.type, w: p.w, h: p.h, name: k + ' ' + (j + 1) });
+            if (p) images.push({ row: r + 1, col: 7 + j, data: p.data, type: p.type, w: p.w, h: p.h, name: k + ' ' + (j + 1) });
           }));
         });
       });
       return Promise.all(jobs).then(function () {
-        var widths = [10, 10, 10, 6, 10, 50];
+        var widths = [10, 10, 10, 6, 5, 14, 50];
         for (var i = 0; i < maxPics; i++) widths.push(22);
-        var blob = window.QuickCalXlsx.write(rows, { sheet: T('Notes', 'Notater'), widths: widths, wrap: [5], images: images, rowHeights: rowHeights });
+        var blob = window.QuickCalXlsx.write(rows, { sheet: T('Notes', 'Notater'), widths: widths, wrap: [6], images: images, rowHeights: rowHeights });
         return save.then(function (write) { return write(blob); });
       });
     }).catch(function (e) { if (window.console && !(e && e.name === 'AbortError')) console.error(e); })
@@ -551,15 +639,16 @@ window.QuickCalNotes = (function () {
     keys.forEach(function (k) {
       var n = index[k], d = parseKey(k);
       var row = el('div', 'noteRow');
-      var dot = el('span', 'noteDot');
-      var hex = colorHex(n.color);
-      if (hex) dot.style.background = hex; else dot.classList.add('plain');
+      var dot = numberDot(n.color);
+      dot.title = colorLabel(n.color);
       row.appendChild(dot);
       var dateCell = el('span', 'noteDate', deps.dayTitle(d, true));
       if (n.end) { var e = parseKey(n.end); dateCell.appendChild(el('span', 'noteEnd', ' → ' + e.getDate() + '.' + (e.getMonth() + 1) + '.')); }
       row.appendChild(dateCell);
       var first = n.text.trim().split('\n')[0] || (n.images ? T('(picture)', '(bilde)') : '');
       row.appendChild(el('span', 'noteFirst', first));
+      var tasks = n.text.match(/^[☐☑]/gm);
+      if (tasks) row.appendChild(el('span', 'noteTasks', '☑ ' + tasks.filter(function (t) { return t === '☑'; }).length + '/' + tasks.length));
       if (n.images) row.appendChild(el('span', 'noteImgs', '🖼' + (n.images > 1 ? n.images : '')));
       var rm = el('button', 'noteRemove', '🗑'); rm.title = T('Delete note', 'Slett notat');
       rm.addEventListener('click', function (e) {
@@ -600,6 +689,7 @@ window.QuickCalNotes = (function () {
     closeEditor: closeEditor,
     isOpen: isOpen,
     openPeek: openPeek,
+    openPicked: openPicked,
     closePeek: closePeek,
     isPeekOpen: isPeekOpen,
     fillList: fillList,

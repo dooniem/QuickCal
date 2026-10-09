@@ -566,6 +566,20 @@
       if (e.key === 'Escape') notes(function (N) { N.closeEditor(); });
       return;   // typing in a note: no calendar shortcuts
     }
+    // Enter: open the note of the picked day, or of today (nothing happens when notes are off)
+    var tag0 = (e.target && e.target.tagName) || '';
+    if (e.key === 'Enter' && !e.repeat && !e.ctrlKey && !e.altKey && isCalendarPage(currentPage) && !/^(INPUT|SELECT|TEXTAREA|BUTTON)$/.test(tag0)) {
+      var opened = notes(function (N) {
+        if (N.openPicked()) return true;
+        var cell = document.querySelector('#' + currentPage + ' .cell.today');
+        var d = cell && cellDate(cell);
+        if (!d) return false;
+        hideTip();
+        N.openEditor(cell, d, cell.dataset.tip);
+        return true;
+      }, false);
+      if (opened) { e.preventDefault(); return; }
+    }
     notes(function (N) { N.closePeek(); });
     if (e.key === 'Escape') { closePopups(); return; }
     if (e.repeat || !isCalendarPage(currentPage)) return;
@@ -857,6 +871,7 @@
     $('notesTools').classList.toggle('hidden', !any);   // search and color filter
     $('notesExport').classList.toggle('hidden', !any);
     $('notesFilterMenu').classList.add('hidden');
+    $('notesColorsMenu').classList.add('hidden');
     showPage('notesPage');
   }
   // Notepad button next to Settings. Before installing, it leads to a page that explains notes.
@@ -1237,7 +1252,7 @@
     notes(function (N) {
       notesStarted = true;
       N.init({ T: T, render: rerender, showDate: showDate, isTouch: touchOnly, dayTitle: dayTitle, isoWeek: isoWeek });
-      N.listTools({ search: $('notesSearch'), filterBtn: $('notesFilterBtn'), filterMenu: $('notesFilterMenu'), exportBtn: $('notesExport'), list: $('notesList'), empty: $('notesEmpty') });
+      N.listTools({ search: $('notesSearch'), filterBtn: $('notesFilterBtn'), filterMenu: $('notesFilterMenu'), colorsBtn: $('notesColorsBtn'), colorsMenu: $('notesColorsMenu'), exportBtn: $('notesExport'), list: $('notesList'), empty: $('notesEmpty') });
     });
   }
   startNotes();
