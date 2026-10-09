@@ -371,8 +371,9 @@
       var box = e.parentElement, page = $(e.closest('.page').id), colWidth = (+page.dataset.w - 16) / 3;
       var width = colWidth;
       if (box.classList.contains('wide')) {
-        var button = box.parentElement.querySelector('.linkBox');
-        width = colWidth * 2 + 8 - ((button && button.offsetWidth) || 75) - 6;
+        var buttons = 0;   // Settings, and the notepad button when it is shown
+        Array.prototype.forEach.call(box.parentElement.querySelectorAll('.linkBox'), function (b) { if (b.offsetWidth) buttons += b.offsetWidth + 4; });
+        width = colWidth * 2 + 8 - (buttons || 79) - 6;
       }
       var keys = e.querySelectorAll('.spaceKey').length * 3 + e.querySelectorAll('.arrowKey').length * 1.4;
       var text = e.textContent + new Array(Math.ceil(keys) + 1).join('\u2003');   // room for the keys
@@ -834,8 +835,9 @@
     $('notesDeleteAll').classList.toggle('hidden', !notes(function (N) { return N.count(); }, 0));
     showPage('notesPage');
   }
-  $('notesPageBtn').addEventListener('click', openNotesPage);
-  $('notesBack').addEventListener('click', function () { showPage('settingsPage'); });
+  // Notepad button next to Settings (installed app only, where notes are available)
+  ['notesBtn1', 'notesBtn2'].forEach(function (id) { $(id).addEventListener('click', openNotesPage); });
+  $('notesBack').addEventListener('click', showCalendar);
   $('notesDeleteAll').addEventListener('click', function () {
     if (!confirm(T('Delete all notes?', 'Slette alle notater?'))) return;
     notes(function (N) { return N.deleteAll(); }, Promise.resolve()).then(openNotesPage, openNotesPage);
@@ -1096,7 +1098,11 @@
     $('weeksAfter').textContent = T('number of weeks summer vacation (0-3)', 'uker sommerferie (0–3)');
     $('autostartPageBtn').textContent = T('Start automatically', 'Start automatisk');
     $('resetSizeBtn').textContent = T('Default window size', 'Standard vindusstørrelse');
-    $('notesPageBtn').textContent = T('Notes', 'Notater');
+    ['notesBtn1', 'notesBtn2'].forEach(function (id) {
+      $(id).title = T('Notes', 'Notater');
+      $(id).setAttribute('aria-label', $(id).title);
+      $(id).classList.toggle('hidden', !isInstalled());
+    });
     $('notesTitle').textContent = T('Notes', 'Notater');
     $('notesDeleteAll').textContent = T('Delete all', 'Slett alle');
 

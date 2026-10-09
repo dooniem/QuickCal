@@ -365,7 +365,7 @@
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
-                    <Viewbox Grid.Column="0" HorizontalAlignment="Left" Margin="0.5,0.5,6,0.5">
+                    <Viewbox Grid.Column="0" HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="0.5,0.5,6,0.5">
                         <StackPanel x:Name="infoPanel" Orientation="Horizontal" Margin="6,4,0,1"/>
                     </Viewbox>
                     <StackPanel Grid.Column="1" Orientation="Horizontal">
@@ -438,7 +438,7 @@
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="*"/>
                     </Grid.ColumnDefinitions>
-                    <Viewbox Grid.Column="0" HorizontalAlignment="Left" Margin="0.5">
+                    <Viewbox Grid.Column="0" HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="0.5">
                         <StackPanel x:Name="yearInfoPanel" Orientation="Horizontal" Margin="6,4,0,1"/>
                     </Viewbox>
                     <Viewbox Grid.Column="1" Stretch="Uniform" HorizontalAlignment="Left">
