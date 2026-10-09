@@ -253,6 +253,13 @@ html.pipActive #stage { visibility: hidden; }
 .notesPicsBtn.pics-with .npHill { fill: #2e9e5b; }
 .notesPicsBtn.pics-with .npSun { fill: #e8a11e; }
 .notesPicsBtn.pics-without .npSlash { stroke: #c0392b; }
+/* Beta: the calendar shows the search and filter too: grey days when off, a green and an empty day when on */
+.notesCalBtn { color: #555; }
+.notesCalBtn .ncDay, .notesCalBtn .ncDay2 { fill: #bbb; }
+.notesCalBtn.active .ncDay { fill: #2e9e5b; }
+.notesCalBtn.active .ncDay2 { fill: none; }
+/* The calendar is filtered: the notes button gets a blue ring, so it is easy to see why notes are missing */
+html.notesFiltered .linkBox.notesBtn { box-shadow: 0 0 0 2px #143275; }
 .btn.exportBtn.restoreBtn { right: 60px; }
 /* Beta: repeating notes */
 .neBtn.on { background: #dbe8ff; box-shadow: inset 0 0 0 1px #143275; }

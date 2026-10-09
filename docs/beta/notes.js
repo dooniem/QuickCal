@@ -134,6 +134,10 @@ window.QuickCalNotes = (function () {
     return out;
   }
   function listAt(dk) { return notesAt(dk).filter(Boolean); }
+  // What the calendar shows: with the list's search and filter turned on for the calendar (the calendar
+  // button in the notes list), only the notes that match. The others still take their place on the day.
+  function shownAt(dk) { return notesAt(dk).map(function (a) { return a && (!filter.cal || matches(a.k)) ? a : null; }); }
+  function shownList(dk) { return shownAt(dk).filter(Boolean); }
   // Room for a note (self = its key when it is already stored) on days s..e in half sl
   function fits(s, e, sl, self) {
     var k2 = slotKey(s, sl);
@@ -343,7 +347,7 @@ window.QuickCalNotes = (function () {
   // and the notepad icon only on its last day (in each month).
   // Two notes on a day: the top half has one, the bottom half the other, with a thin white line between.
   function decorate(cell, date) {
-    var dk = key(date), pair = notesAt(dk), shown = pair.filter(Boolean);
+    var dk = key(date), pair = shownAt(dk), shown = pair.filter(Boolean);
     if (!shown.length) return;
     cell.classList.add('note');
     if (shown.some(function (a) { return index[a.k].repeat; })) cell.classList.add('noteRepeat');
@@ -384,7 +388,7 @@ window.QuickCalNotes = (function () {
 
   /** Hover tooltip for a day with a note: the text (and the first image), under the holiday name if any. */
   function fillTip(tip, date, holidayText, onResize) {
-    var list = listAt(key(date));
+    var list = shownList(key(date));
     if (!list.length) return false;
     tip.innerHTML = '';
     tip.classList.add('noteTip');
@@ -428,7 +432,7 @@ window.QuickCalNotes = (function () {
     var same = peek && peek.cell.dataset.date === cell.dataset.date && document.body.contains(peek.cell);
     closePeek();
     if (same) return;
-    var dk = key(date), list = listAt(dk);
+    var dk = key(date), list = shownList(dk);
     var box = el('div', 'notePeek');
     // A pen button for each note on the day (the picked day already has a black frame), + for a second note,
     // plus the holiday name if the day has one
@@ -475,7 +479,11 @@ window.QuickCalNotes = (function () {
     if (editor) closeEditor();
     var dk = key(date), list = listAt(dk), a = null;
     if (pick !== 'new') {
-      a = list.filter(function (x) { return x.k === pick; })[0] || (pick ? null : list[0]) || null;
+      // Nothing picked: the first note the calendar shows (a new one if it shows none and there is room)
+      if (!pick) pick = (shownList(dk)[0] || (freeSlot(dk, dk, null) < 0 ? list[0] : null) || {}).k || 'new';
+    }
+    if (pick !== 'new') {
+      a = list.filter(function (x) { return x.k === pick; })[0] || null;
       if (!a && pick && index[pick]) a = { k: pick, s: dayOf(pick), e: index[pick].end || dayOf(pick), slot: slotOf(pick) };
     }
     // A day inside a multi-day note opens that note (from its first day)
@@ -1013,16 +1021,16 @@ window.QuickCalNotes = (function () {
   // Live search: notes whose text contains what is typed (any case). Color filter: none checked = all colors;
   // '' stands for notes without a color. Both apply together. Kept while the app is open.
   // Pictures: '' = all notes, 'with' = only notes with pictures, 'without' = only notes without (one button, click to step).
-  var filter = { q: '', colors: [], pics: '' };
-  function filteredKeys() {
-    var q = filter.q.trim().toLowerCase();
-    return Object.keys(index).sort().filter(function (k) {
-      var n = index[k];
-      if (filter.colors.length && filter.colors.indexOf(n.color || '') < 0) return false;
-      if (filter.pics && (filter.pics === 'with') !== !!n.images) return false;
-      return !q || n.text.toLowerCase().indexOf(q) >= 0;
-    });
+  // cal: the calendar shows only the notes that match too (the calendar button).
+  var filter = { q: '', colors: [], pics: '', cal: false };
+  function matches(k) {
+    var n = index[k], q = filter.q.trim().toLowerCase();
+    if (!n) return false;
+    if (filter.colors.length && filter.colors.indexOf(n.color || '') < 0) return false;
+    if (filter.pics && (filter.pics === 'with') !== !!n.images) return false;
+    return !q || n.text.toLowerCase().indexOf(q) >= 0;
   }
+  function filteredKeys() { return Object.keys(index).sort().filter(matches); }
 
   var tools = null;   // { search, filterBtn, filterMenu, picsBtn, exportBtn, list, empty }
   function listTools(t) {
@@ -1040,6 +1048,7 @@ window.QuickCalNotes = (function () {
       filter.pics = { '': 'with', 'with': 'without', 'without': '' }[filter.pics];
       refreshList();
     });
+    t.calBtn.addEventListener('click', function () { filter.cal = !filter.cal; refreshList(); });
     t.exportBtn.addEventListener('click', exportList);
     t.backupBtn.title = backupTitle();
     t.backupBtn.addEventListener('click', backup);
@@ -1102,7 +1111,8 @@ window.QuickCalNotes = (function () {
       m.appendChild(r);
     });
   }
-  function refreshList() { if (tools) fillList(tools.list, tools.empty); }
+  function refreshList() { if (tools) fillList(tools.list, tools.empty); if (filter.cal || calShown) { calShown = filter.cal; deps.render(); } }
+  var calShown = false;   // the calendar was last drawn with the filter on
 
   // Excel: the list as shown (search and color filter), with the pictures placed in their own cells
   function exportList() {
@@ -1163,7 +1173,12 @@ window.QuickCalNotes = (function () {
         : filter.pics === 'without' ? T('Showing notes without pictures. Click: all notes', 'Viser notater uten bilde. Klikk: alle notater')
         : T('Filter on pictures. Click: only notes with pictures', 'Filtrer på bilder. Klikk: bare notater med bilde');
       tools.exportBtn.disabled = !keys.length;
+      tools.calBtn.classList.toggle('active', filter.cal);
+      tools.calBtn.title = filter.cal
+        ? T('The calendar shows only the notes that match the search and filter. Click: show all notes', 'Kalenderen viser bare notatene som passer søket og filteret. Klikk: vis alle notatene')
+        : T('Show only the notes that match the search and filter in the calendar too', 'Vis bare notatene som passer søket og filteret i kalenderen også');
     }
+    document.documentElement.classList.toggle('notesFiltered', !!(filter.cal && (filter.q.trim() || filter.colors.length || filter.pics)));
     showBackupHint();
     if (all && !keys.length) listEl.appendChild(el('div', 'noteNoMatch', T('No notes match.', 'Ingen notater passer.')));
     keys.forEach(function (k) {
@@ -1339,7 +1354,7 @@ window.QuickCalNotes = (function () {
   // A day with two notes: the top half grabs the top note, the bottom half the bottom one.
   function dragMode(cell, x, y) {
     var dk = cellKey(cell); if (!dk) return null;
-    var pair = notesAt(dk), r = cell.getBoundingClientRect();
+    var pair = shownAt(dk), r = cell.getBoundingClientRect();
     var a = pair[0] && pair[1] ? pair[y > r.top + r.height / 2 ? 1 : 0] : pair[0] || pair[1], n = a && index[a.k];
     if (!n || n.repeat) return null;
     var edge = Math.max(4, r.width * 0.2);
