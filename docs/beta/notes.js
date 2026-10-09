@@ -1068,6 +1068,132 @@ window.QuickCalNotes = (function () {
     }).catch(function (e) { if (window.console) console.error(e); alert(bad); });
   }
 
+  // =====================================================================================
+  // Drag with the mouse: move a note to other days, or drag its first/last day's edge to change its length.
+  // Hand cursor over a note, ↔ at the outer edges. A drag starts after a few pixels, so a click stays a
+  // click. Dashed frame on the days it would cover (red if it cannot go there). Esc cancels. Repeating
+  // notes are not dragged (change them in the ↻ panel). An "Undo" button shows for a few seconds.
+  // =====================================================================================
+  var drag = null, hoverCell = null, swallowClick = false, undoBox = null;
+  function cellKey(cell) {
+    var p = (cell && cell.dataset.date || '').split('-');
+    return p.length === 3 ? key(new Date(+p[0], +p[1] - 1, +p[2])) : null;
+  }
+  function dayCell(target) { return target && target.closest ? target.closest('.cell.pick') : null; }
+  // What a press at this point of this cell would do: 'move', 'end', 'start' or null
+  function dragMode(cell, x) {
+    var dk = cellKey(cell), a = dk && at(dk), n = a && index[a.k];
+    if (!n || n.repeat) return null;
+    var r = cell.getBoundingClientRect(), edge = Math.max(4, r.width * 0.2);
+    if (dk === a.e && x > r.right - edge) return 'end';
+    if (dk === a.s && x < r.left + edge) return 'start';
+    return 'move';
+  }
+  function setHover(cell, mode) {
+    if (hoverCell && hoverCell !== cell) hoverCell.style.cursor = '';
+    hoverCell = cell;
+    if (cell) cell.style.cursor = mode === 'move' ? 'grab' : mode ? 'ew-resize' : '';
+  }
+  function target(d, hk) {
+    var s = d.s, e = d.e;
+    if (d.mode === 'move') { var off = daysBetween(d.from, hk); s = addDays(d.s, off); e = addDays(d.e, off); }
+    else if (d.mode === 'end') e = hk < d.s ? d.s : hk;
+    else s = hk > d.e ? d.e : hk;
+    var ok = daysBetween(s, e) < MAX_SPAN_DAYS && !(index[s] && s !== d.k);
+    for (var x = s; ok && x <= e; x = addDays(x, 1)) if (cover[x] && cover[x] !== d.k) ok = false;
+    return { s: s, e: e, ok: ok };
+  }
+  function clearPreview() {
+    Array.prototype.forEach.call(document.querySelectorAll('.cell.dropOk, .cell.dropBad'), function (c) { c.classList.remove('dropOk', 'dropBad'); });
+  }
+  function showPreview(t) {
+    clearPreview();
+    Array.prototype.forEach.call(document.querySelectorAll('.cell.pick'), function (c) {
+      var k = cellKey(c);
+      if (k >= t.s && k <= t.e) c.classList.add(t.ok ? 'dropOk' : 'dropBad');
+    });
+    document.documentElement.classList.toggle('noteDropBad', !t.ok);
+  }
+  function endDrag() {
+    clearPreview();
+    document.documentElement.classList.remove('noteDragging', 'noteResizing', 'noteDropBad');
+    drag = null;
+  }
+  function onPointerDown(e) {
+    if (e.pointerType !== 'mouse' || e.button !== 0 || editor || !available) return;
+    var cell = dayCell(e.target), mode = cell && dragMode(cell, e.clientX);
+    if (!mode) return;
+    var a = at(cellKey(cell));
+    drag = { mode: mode, k: a.k, s: a.s, e: a.e, from: cellKey(cell), x: e.clientX, y: e.clientY, active: false, t: null };
+    e.preventDefault();   // no text selection while dragging
+  }
+  function onPointerMove(e) {
+    if (e.pointerType !== 'mouse') return;
+    if (!drag) {
+      var cell = dayCell(e.target);
+      setHover(cell, cell && !editor ? dragMode(cell, e.clientX) : null);
+      return;
+    }
+    if (!drag.active) {
+      if (Math.abs(e.clientX - drag.x) + Math.abs(e.clientY - drag.y) < 6) return;
+      drag.active = true;
+      closePeek();
+      document.documentElement.classList.add(drag.mode === 'move' ? 'noteDragging' : 'noteResizing');
+    }
+    var over = dayCell(document.elementFromPoint(e.clientX, e.clientY)), hk = cellKey(over);
+    if (!hk) return;
+    drag.t = target(drag, hk);
+    showPreview(drag.t);
+  }
+  function onPointerUp(e) {
+    if (!drag || e.pointerType !== 'mouse') return;
+    var d = drag;
+    endDrag();
+    if (!d.active) return;   // just a click
+    swallowClick = true;     // the click that follows the drop must not open the small box
+    setTimeout(function () { swallowClick = false; }, 0);
+    if (!d.t || !d.t.ok || (d.t.s === d.s && d.t.e === d.e)) return;
+    moveNote(d.k, d.t.s, d.t.e, d.mode === 'move' ? T('Note moved.', 'Notatet er flyttet.') : T('Note changed.', 'Notatet er endret.'));
+  }
+  function moveNote(k, s, e, message) {
+    return getNote(k).then(function (n) {
+      if (!n) return;
+      var before = JSON.parse(JSON.stringify({ date: n.date, endDate: n.endDate || '' }));
+      return relocate(n, s, e).then(function () { showUndo(message, function () { relocate(n, before.date, before.endDate || before.date); }); });
+    }).catch(function (err) { if (window.console) console.error(err); });
+  }
+  // Stores note n on days s..e (it may get a new first day, which is its key)
+  function relocate(n, s, e) {
+    var old = n.date;
+    n.date = s;
+    if (e > s) n.endDate = e; else delete n.endDate;
+    var gone = old !== s ? deleteNote(old).then(function () { delete index[old]; }) : Promise.resolve();
+    return gone.then(function () { return save(n); }).then(deps.render, function () { deps.render(); });
+  }
+  function showUndo(message, undo) {
+    if (undoBox) undoBox.remove();
+    var box = el('div', 'noteUndo');
+    box.appendChild(el('span', '', message));
+    var b = el('button', '', T('Undo', 'Angre'));
+    b.addEventListener('click', function (ev) { ev.stopPropagation(); box.remove(); undoBox = null; undo(); });
+    box.appendChild(b);
+    document.body.appendChild(box);
+    undoBox = box;
+    setTimeout(function () { if (undoBox === box) { box.remove(); undoBox = null; } }, 6000);
+  }
+  function setupDrag() {
+    document.addEventListener('pointerdown', onPointerDown);
+    document.addEventListener('pointermove', onPointerMove);
+    document.addEventListener('pointerup', onPointerUp);
+    window.addEventListener('blur', function () { if (drag) endDrag(); });
+    document.addEventListener('keydown', function (e) {
+      if (drag && e.key === 'Escape') { e.stopPropagation(); e.preventDefault(); endDrag(); }
+    }, true);
+    document.addEventListener('click', function (e) {
+      if (swallowClick) { swallowClick = false; e.stopPropagation(); e.preventDefault(); }
+    }, true);
+  }
+
   function deleteAll() {
     return tx('readwrite', function (s) { s.clear(); }).then(function () { index = {}; cover = {}; deps.render(); });
   }
@@ -1079,6 +1205,7 @@ window.QuickCalNotes = (function () {
     return openDb().then(function (opened) {
       db = opened;
       available = true;
+      setupDrag();
       return getAll();
     }).then(function (all) {
       all.forEach(remember);

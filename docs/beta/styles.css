@@ -268,3 +268,14 @@ html.pipActive #stage { visibility: hidden; }
 #notesPage.full .notesList { height: calc(100% - 92px); }
 #notesPage.full .noteRow { font-size: 12.5px; padding: 3px 4px; }
 .bhIcon svg { width: 13px; height: 13px; vertical-align: -2px; color: #333; }
+/* Beta: drag notes to move them or change their length */
+html.noteDragging, html.noteDragging * { cursor: grabbing !important; }
+html.noteResizing, html.noteResizing * { cursor: ew-resize !important; }
+html.noteDropBad, html.noteDropBad * { cursor: not-allowed !important; }
+html.noteDragging #tooltip, html.noteResizing #tooltip { display: none; }
+.cell.dropOk { outline: 2px dashed #143275; outline-offset: -3px; }
+.cell.dropBad { outline: 2px dashed #c00; outline-offset: -3px; }
+.noteUndo { position: fixed; left: 50%; bottom: 8px; transform: translateX(-50%); z-index: 30; display: flex; align-items: center; gap: 10px;
+  background: #333; color: #fff; border-radius: 4px; padding: 4px 6px 4px 10px; font: 12px var(--font); box-shadow: 0 2px 8px rgba(0,0,0,.3); }
+.noteUndo button { background: transparent; border: 1px solid #aaa; color: #fff; border-radius: 3px; font: inherit; padding: 1px 8px; cursor: pointer; }
+.noteUndo button:hover { background: #555; }
