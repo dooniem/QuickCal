@@ -19,12 +19,13 @@
   var PIP_NOTES = /[?&]pip=notes(&|$)/.test(location.search);
   function notesHere() { return isInstalled() || PIP_NOTES; }
   function notes(fn, fallback) {
-    try { if (window.QuickCalNotes && notesHere()) return fn(window.QuickCalNotes); } catch (e) { if (window.console) console.error(e); }
+    try { if (window.QuickCalNotes && notesHere() && settings.notesEnabled !== false) return fn(window.QuickCalNotes); } catch (e) { if (window.console) console.error(e); }
     return fallback;
   }
   var DEFAULTS = {
     language: 'UseSystemLanguage', // 'English' | 'Norwegian' | 'UseSystemLanguage'
     showHolidays: true,
+    notesEnabled: true,     // Notes on/off. Off only hides them: saved notes are kept (still deleted after 3 months)
     easterFullWeek: true,
     summerWeeks: 3,
     appSize: null,          // last normal window size of the installed app {w, h} (inner size)
@@ -772,6 +773,7 @@
   function openSettings() {
     $('languageSelect').value = settings.language;
     setCheck($('holidaysCheck'), settings.showHolidays);
+    setCheck($('notesCheck'), settings.notesEnabled !== false);
     setCheck($('easterCheck'), settings.easterFullWeek);
     $('weeksInput').value = String(settings.summerWeeks);
     updateHolidayRows();
@@ -788,12 +790,15 @@
   $('settingsBtn2').addEventListener('click', openSettings);
   $('holidaysCheck').addEventListener('click', function () { setCheck(this, !isChecked(this)); updateHolidayRows(); });
   $('easterCheck').addEventListener('click', function () { setCheck(this, !isChecked(this)); });
+  $('notesCheck').addEventListener('click', function () { setCheck(this, !isChecked(this)); });
   $('weeksInput').addEventListener('input', function () { this.value = this.value.replace(/[^0-3]/g, '').slice(0, 1); });
 
   $('settingsBack').addEventListener('click', function () {
     settings.language = $('languageSelect').value;
     settings.showHolidays = isChecked($('holidaysCheck'));
     settings.easterFullWeek = isChecked($('easterCheck'));
+    settings.notesEnabled = isChecked($('notesCheck'));
+    if (settings.notesEnabled) startNotes();   // off: notes are only hidden, nothing is deleted
     var w = parseInt($('weeksInput').value, 10);
     if (!isNaN(w)) settings.summerWeeks = Math.max(0, Math.min(3, w));
     saveSettings();
@@ -1084,7 +1089,7 @@
   function applyTexts() {
     document.documentElement.classList.toggle('touch', touchOnly());
     if (currentPage === 'yearView' && +$('yearView').dataset.w !== yearLayout().w) { showPage('yearView'); renderYearView(); }
-    [$('holidaysCheck'), $('easterCheck')].forEach(function (b) { setCheck(b, isChecked(b)); });
+    [$('holidaysCheck'), $('easterCheck'), $('notesCheck')].forEach(function (b) { setCheck(b, isChecked(b)); });
     document.documentElement.lang = norwegian() ? 'no' : 'en';
     if (touchOnly()) {
       $('infoText').textContent = T('Swipe ← → for month, ↓ for today', 'Sveip ← → for ny måned, ↓ for i dag');
@@ -1108,6 +1113,7 @@
     $('welcomeBtn').textContent = T('Getting started', 'Kom i gang');
     $('languageLabel').textContent = T('Calendar Language', 'Kalenderspråk');
     $('systemLanguageOption').textContent = T('Use system language', 'Bruk systemspråk');
+    $('notesLabel').textContent = T('Notes on days', 'Notater på dager');
     $('holidaysLabel').textContent = T('Show holidays in calendar', 'Vis helligdager i kalenderen');
     $('easterLabel').textContent = T('Show Easter as a full week off', 'Vis hele påskeuka som fri');
     $('weeksBefore').textContent = T('Show', 'Vis');
@@ -1115,6 +1121,7 @@
     $('autostartPageBtn').textContent = T('Start automatically', 'Start automatisk');
     $('resetSizeBtn').textContent = T('Default window size', 'Standard vindusstørrelse');
     ['notesBtn1', 'notesBtn2'].forEach(function (id) {
+      $(id).classList.toggle('hidden', settings.notesEnabled === false);
       $(id).title = T('Notes', 'Notater');
       $(id).setAttribute('aria-label', $(id).title);
     });
