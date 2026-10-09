@@ -127,9 +127,9 @@ button { font-family: inherit; color: inherit; }
 /* Two notes on a day: one colored and one plain half */
 .cell.noteMixed { color: #111; text-shadow: 0 0 2px #fff, 0 0 3px #fff; }
 /* Holiday, today or birthday with a colored note: the color shows as a corner mark, the day keeps its look */
-.cell.noteCorner { background-image: linear-gradient(225deg, var(--note-color) 0 28%, transparent 28%); }
-.cell.today.gold.noteCorner { background-image: linear-gradient(225deg, var(--note-color) 0 28%, transparent 28%), linear-gradient(rgba(255,255,255,.2), rgba(255,255,255,.2)), url("../assets/gold_texture.jpg"); background-size: auto, auto, 100% 100%; }
-.cell.gold.noteCorner:not(.today) { background-image: linear-gradient(225deg, var(--note-color) 0 28%, transparent 28%), url("../assets/gold_texture.jpg"); background-size: auto, 100% 100%; }
+.cell.noteCorner { background-image: linear-gradient(225deg, var(--note-color, transparent) 0 28%, transparent 28%), linear-gradient(315deg, var(--note-color2, transparent) 0 28%, transparent 28%); }
+.cell.today.gold.noteCorner { background-image: linear-gradient(225deg, var(--note-color, transparent) 0 28%, transparent 28%), linear-gradient(315deg, var(--note-color2, transparent) 0 28%, transparent 28%), linear-gradient(rgba(255,255,255,.2), rgba(255,255,255,.2)), url("../assets/gold_texture.jpg"); background-size: auto, auto, auto, 100% 100%; }
+.cell.gold.noteCorner:not(.today) { background-image: linear-gradient(225deg, var(--note-color, transparent) 0 28%, transparent 28%), linear-gradient(315deg, var(--note-color2, transparent) 0 28%, transparent 28%), url("../assets/gold_texture.jpg"); background-size: auto, auto, 100% 100%; }
 
 .tooltip.noteTip { white-space: pre-wrap; max-width: 280px; line-height: 1.35; }
 .tipHoliday { font-weight: 600; margin-bottom: 2px; }

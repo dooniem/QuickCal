@@ -361,13 +361,17 @@ window.QuickCalNotes = (function () {
       return;
     }
     var hex = hexes[0] || hexes[1];
-    if (hex && plain && shown.length === 1) {
+    if (hex && plain) {
       cell.style.backgroundColor = hex;
       cell.classList.add('noteColored');
-    } else if (hex) {
-      cell.style.setProperty('--note-color', hex);   // keeps holiday/today look, color shows as a corner mark
-      cell.classList.add('noteCorner');
+      return;
     }
+    // A holiday, today or birthday keeps its look: the note's color shows as a corner mark, top right.
+    // With two notes the bottom note gets the bottom right corner (like the bottom half of other days).
+    var c1 = shown.length === 2 ? hexes[0] : hex, c2 = shown.length === 2 ? hexes[1] : null;
+    if (c1) cell.style.setProperty('--note-color', c1);
+    if (c2) cell.style.setProperty('--note-color2', c2);
+    if (c1 || c2) cell.classList.add('noteCorner');
   }
 
   function hasNote(date) { return listAt(key(date)).length > 0; }
