@@ -186,7 +186,9 @@ button { font-family: inherit; color: inherit; }
 #notesPage .btn.inline { margin-left: 0; }
 /* Beta: "Always on top" (pip.js) */
 .linkBox.pipBtn { padding: 0 3px; }
-html.pip .bottomRow .right { visibility: hidden; }
+html.pip .notesBtn, html.pip #settingsBtn1 { display: none; }
+.linkBox.pipBtn.pipOn { background: #90ee90; }   /* LightGreen, as in the Windows app when "Always on top" is on */
+.linkBox.pipBtn.pipOn:hover { background: #7ddc7d; }
 html.pipActive #stage { visibility: hidden; }
 #pipCover { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; font-size: 14px; font-family: var(--font); text-align: center; padding: 16px; }
 #pipCover p { margin: 0; }

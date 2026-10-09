@@ -2,17 +2,33 @@
    Edge and Chrome on a PC can show a page in a small floating window that stays above other windows
    (Document Picture-in-Picture). The calendar is shown there and this window only says where it went,
    so there are never two calendars. Always off at start: it needs a click every time.
-   To remove the feature: delete this file, its <script> tag and the two pipBtn buttons in index.html,
+   To remove the feature: delete this file, its <script> tag and the pipBtn1 button in index.html,
    and the .pipBtn/.pipCover/html.pip styles. app.js only needs ?pip to work as before. */
 (function () {
   'use strict';
-  if (/[?&]pip(=|&|$)/.test(location.search)) return;          // this is the floating window itself
+  function no() { return document.documentElement.lang === 'no'; }
+  function T(en, nb) { return no() ? nb : en; }
+  function hoverText(b) { b.addEventListener('mouseenter', function () { b.title = T('Always on top', 'Alltid øverst'); }); }
+
+  // In the floating window itself: the same button, green while it is on. A click turns it off.
+  if (/[?&]pip(=|&|$)/.test(location.search)) {
+    document.addEventListener('DOMContentLoaded', function () {
+      var b = document.getElementById('pipBtn1');
+      if (!b) return;
+      b.classList.remove('hidden');
+      b.classList.add('pipOn');
+      hoverText(b);
+      b.addEventListener('click', function (e) {
+        e.stopPropagation();
+        try { window.parent.postMessage('quickcal-pip-close', location.origin); } catch (err) { /* ignore */ }
+      });
+    });
+    return;
+  }
   if (!('documentPictureInPicture' in window)) return;           // other browsers, phones and tablets
   if (window.matchMedia && matchMedia('(hover: none) and (pointer: coarse)').matches) return;
 
   var pipWin = null;
-  function no() { return document.documentElement.lang === 'no'; }
-  function T(en, nb) { return no() ? nb : en; }
   function installed() {
     return !!window.matchMedia && (matchMedia('(display-mode: standalone)').matches || matchMedia('(display-mode: window-controls-overlay)').matches);
   }
@@ -31,6 +47,7 @@
       frame.addEventListener('load', function () { try { frame.contentWindow.focus(); } catch (e) { /* ignore */ } });
       d.body.appendChild(frame);
       win.addEventListener('pagehide', closed);
+      win.addEventListener('message', function (e) { if (e.origin === location.origin && e.data === 'quickcal-pip-close') win.close(); });
       showCover();
     }).catch(function (e) { if (window.console) console.error(e); });
   }
@@ -65,13 +82,11 @@
   }, true);
 
   document.addEventListener('DOMContentLoaded', function () {
-    ['pipBtn1', 'pipBtn2'].forEach(function (id) {
-      var b = document.getElementById(id);
-      if (!b) return;
-      b.classList.remove('hidden');
-      b.addEventListener('mouseenter', function () { b.title = T('Always on top (small window)', 'Alltid øverst (lite vindu)'); });
-      b.setAttribute('aria-label', 'Always on top');
-      b.addEventListener('click', function (e) { e.stopPropagation(); open(); });
-    });
+    // Only on the 3-month page (pipBtn1): the floating window always shows the 3 months, never the whole year
+    var b = document.getElementById('pipBtn1');
+    if (!b) return;
+    b.classList.remove('hidden');
+    hoverText(b);
+    b.addEventListener('click', function (e) { e.stopPropagation(); open(); });
   });
 })();
