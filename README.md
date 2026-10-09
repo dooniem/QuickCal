@@ -23,8 +23,10 @@ QuickCal is free and open source. It comes in two versions:
 
 1. Open **https://dooniem.github.io/QuickCal/** in **Microsoft Edge** (recommended) or Google Chrome.
 2. The *Getting started* page opens. Click **Install** and confirm.
-3. QuickCal opens in its own window. Right-click its icon on the taskbar and choose **Pin to taskbar**.
-4. On the first start, QuickCal shows how to make it start automatically when you sign in.
+3. QuickCal opens in its own window, and Edge asks what the app may do. Tick both **Create desktop shortcut** and **Start automatically on device login**, then click **Allow**. QuickCal then starts when you sign in, so the week number is always on the taskbar.
+4. Right-click the QuickCal icon on the taskbar and choose **Pin to taskbar**.
+
+To change the choices later, click **⋯** in QuickCal's title bar and choose **App settings**. Chrome does not ask, so there QuickCal shows how to turn on automatic start.
 
 On an iPhone or iPad, open the link in Safari, tap **Share** and choose **Add to Home Screen**.
 
@@ -32,7 +34,7 @@ Edge is recommended because it is already on every Windows PC and gives the app 
 
 If the button says *Show me how* instead of *Install*, QuickCal explains the steps for your browser. Installing is not possible in InPrivate or Incognito windows, and IT departments can block it on work PCs. The calendar still works as a normal web page.
 
-**Uninstall:** open **Settings** in QuickCal and click **Uninstall**, or right-click QuickCal in the Windows Start menu and choose **Uninstall**.
+**Uninstall:** click **⋯** in QuickCal's title bar, choose **App settings** and then **Uninstall**. Or right-click QuickCal in the Windows Start menu and choose **Uninstall**.
 
 Norwegian instructions you can share with colleagues: [INSTALLASJON.md](INSTALLASJON.md).
 

@@ -8,10 +8,12 @@ Adresse: **https://dooniem.github.io/QuickCal/**
 
 1. Åpne adressen i **Microsoft Edge** (anbefalt) eller Google Chrome.
 2. Siden *Kom i gang* vises. Klikk **Installer** og bekreft.
-3. QuickCal åpnes i sitt eget vindu. Høyreklikk ikonet på oppgavelinjen og velg **Fest til oppgavelinjen**.
-4. Første gang appen starter, viser den hvordan du får den til å starte automatisk når du logger på.
+3. QuickCal åpnes i sitt eget vindu, og Edge spør hva appen skal få lov til. Kryss av for både **Opprett skrivebordssnarvei** og **Starter automatisk ved enhetspålogging**, og klikk **Tillat**. Da starter QuickCal når du logger på, og ukenummeret står alltid på oppgavelinjen.
+4. Høyreklikk QuickCal-ikonet på oppgavelinjen og velg **Fest til oppgavelinjen**.
 
-Vi anbefaler Edge fordi den finnes på alle Windows-PC-er og gir appen et ryddig vindu. Chrome legger inn en stor **Avinstaller**-knapp i tittellinjen som ikke kan skjules.
+Vil du endre valgene senere, klikker du **⋯** i tittellinjen til QuickCal og velger **Appinnstillinger**. Chrome spør ikke, så der viser QuickCal hvordan du slår på automatisk start.
+
+Edge er anbefalt fordi den finnes på alle Windows-PC-er og gir appen et ryddig vindu. Chrome legger inn en stor **Avinstaller**-knapp i tittellinjen som ikke kan skjules.
 
 Står det *Vis meg hvordan* i stedet for *Installer*, forklarer QuickCal stegene for nettleseren din.
 
@@ -21,7 +23,7 @@ Når QuickCal er installert og åpen, vises ukenummeret som et lite merke på ik
 
 ## Avinstallere
 
-Åpne **Innstillinger** i QuickCal og klikk **Avinstaller**, så får du stegene for din nettleser:
+Klikk **⋯** i tittellinjen til QuickCal, velg **Appinnstillinger** og deretter **Avinstaller**. Andre måter:
 
 - Åpne **Start**-menyen i Windows, finn **QuickCal**, høyreklikk og velg **Avinstaller**. Dette virker både for Edge og Chrome.
 - Eller i Edge: gå til `edge://apps`, klikk **⋯** ved QuickCal og velg **Avinstaller**. I Chrome: gå til `chrome://apps`, høyreklikk QuickCal og velg **Avinstaller** (eller bruk knappen i tittellinjen).
