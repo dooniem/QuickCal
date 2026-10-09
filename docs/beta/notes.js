@@ -129,10 +129,11 @@ window.QuickCalNotes = (function () {
     return putNote(n);
   }
 
+  function expired(n, limit) { return (n.endDate || n.date) < (limit || oldestKept()); }
   function removeOld() {
     var limit = oldestKept();
     return getAll().then(function (all) {
-      var old = all.filter(function (n) { return (n.endDate || n.date) < limit; });
+      var old = all.filter(function (n) { return expired(n, limit); });
       if (!old.length) return;
       return tx('readwrite', function (s) { old.forEach(function (n) { s.delete(n.date); }); })
         .then(function () { old.forEach(function (n) { delete index[n.date]; }); rebuildCover(); deps.render(); });
@@ -525,6 +526,15 @@ window.QuickCalNotes = (function () {
     t.filterMenu.addEventListener('click', function (e) { e.stopPropagation(); });
     document.addEventListener('click', function () { t.filterMenu.classList.add('hidden'); });
     t.exportBtn.addEventListener('click', exportList);
+    t.backupBtn.title = backupTitle();
+    t.backupBtn.addEventListener('click', backup);
+    t.restoreBtn.title = T('Restore notes from a backup file', 'Gjenopprett notater fra en sikkerhetskopi');
+    t.restoreBtn.addEventListener('click', function () { if (available) t.restoreFile.click(); });
+    t.restoreFile.addEventListener('change', function () {
+      var f = t.restoreFile.files && t.restoreFile.files[0];
+      t.restoreFile.value = '';
+      if (f) restore(f).then(function () { if (t.onRestored) t.onRestored(); });
+    });
     // Color names: a small menu with the numbered colors and a name field for each
     t.colorsBtn.addEventListener('click', function (e) {
       e.stopPropagation();
@@ -659,6 +669,90 @@ window.QuickCalNotes = (function () {
       row.addEventListener('click', function () { deps.showDate(d); });
       listEl.appendChild(row);
     });
+  }
+
+  // ---------- Backup: all notes, pictures and color names in one file, and restore from it ----------
+  // A .json file rather than Excel: it brings everything back exactly as it was (pictures, colors, several
+  // days, checklists), and nobody is tempted to edit it. The Excel export is for reading and sharing.
+  var BACKUP_KIND = 'quickcal-notes-backup', LAST_BACKUP_KEY = 'quickcal-beta.lastNotesBackup';
+  function blobToData(b) {
+    return new Promise(function (resolve) {
+      var r = new FileReader();
+      r.onload = function () { resolve(r.result); };
+      r.onerror = function () { resolve(null); };
+      r.readAsDataURL(b);
+    });
+  }
+  function dataToBlob(d) { return fetch(d).then(function (r) { return r.blob(); }).catch(function () { return null; }); }
+  function lastBackup() { try { return localStorage.getItem(LAST_BACKUP_KEY) || ''; } catch (e) { return ''; } }
+  function backupTitle() {
+    var last = lastBackup();
+    return T('Back up all notes to a file', 'Ta sikkerhetskopi av alle notatene til en fil') +
+      (last ? ' (' + T('last: ', 'sist: ') + deps.dayTitle(parseKey(last), true) + ')' : '');
+  }
+  function backup() {
+    var save = window.QuickCalXlsx.target('QuickCal-' + T('notes-backup', 'notater-sikkerhetskopi') + '-' + key(new Date()) + '.json',
+      [{ description: 'QuickCal', accept: { 'application/json': ['.json'] } }]);
+    save.catch(function () {});
+    getAll().then(function (all) {
+      return Promise.all(all.map(function (n) {
+        return Promise.all((n.images || []).map(blobToData)).then(function (imgs) {
+          var out = { date: n.date, text: n.text || '', color: n.color || '', updated: n.updated || 0 };
+          if (n.endDate) out.endDate = n.endDate;
+          if (n.repeat) out.repeat = n.repeat;
+          out.images = imgs.filter(Boolean);
+          return out;
+        });
+      })).then(function (list) {
+        var file = { kind: BACKUP_KIND, version: 1, created: new Date().toISOString(), colorNames: names, notes: list };
+        var blob = new Blob([JSON.stringify(file, null, 1)], { type: 'application/json' });
+        return save.then(function (write) { return write(blob); });
+      });
+    }).then(function () {
+      try { localStorage.setItem(LAST_BACKUP_KEY, key(new Date())); } catch (e) { /* storage blocked */ }
+      if (tools) tools.backupBtn.title = backupTitle();
+    }).catch(function (e) { if (window.console && !(e && e.name === 'AbortError')) console.error(e); });
+  }
+  // Notes in the file replace notes that start on the same day; all other notes are kept.
+  function restore(file) {
+    var bad = T('This file is not a QuickCal notes backup.', 'Denne filen er ikke en sikkerhetskopi av QuickCal-notater.');
+    return file.text().then(function (text) {
+      var data;
+      try { data = JSON.parse(text); } catch (e) { data = null; }
+      if (!data || data.kind !== BACKUP_KIND || !Array.isArray(data.notes)) { alert(bad); return; }
+      var valid = data.notes.filter(function (n) { return n && /^\d{4}-\d\d-\d\d$/.test(n.date) && typeof n.text === 'string'; });
+      var keep = valid.filter(function (n) { return !expired(n); });
+      var old = valid.length - keep.length;
+      if (!keep.length) {
+        alert(old ? T('All notes in the backup are older than 3 months, so none were restored.',
+                      'Alle notatene i sikkerhetskopien er eldre enn 3 måneder, så ingen ble gjenopprettet.')
+                  : T('The backup has no notes.', 'Sikkerhetskopien har ingen notater.'));
+        return;
+      }
+      var created = data.created ? new Date(data.created) : null;
+      if (!confirm(T('Restore ' + keep.length + ' notes from the backup' + (created ? ' of ' + created.toLocaleDateString('en') : '') + '?\n\nNotes on the same day are replaced, all other notes are kept.',
+                     'Gjenopprette ' + keep.length + ' notater fra sikkerhetskopien' + (created ? ' fra ' + created.toLocaleDateString('nb') : '') + '?\n\nNotater på samme dag blir erstattet, alle andre notater beholdes.'))) return;
+      return Promise.all(keep.map(function (n) {
+        return Promise.all((n.images || []).slice(0, MAX_IMAGES).map(dataToBlob)).then(function (blobs) {
+          var r = { date: n.date, text: n.text, color: colorHex(n.color) ? n.color : '', images: blobs.filter(Boolean), updated: n.updated || Date.now() };
+          if (n.endDate && n.endDate > n.date) r.endDate = n.endDate;
+          if (n.repeat) r.repeat = n.repeat;
+          return r;
+        });
+      })).then(function (records) {
+        return tx('readwrite', function (s) { records.forEach(function (r) { s.put(r); }); });
+      }).then(function () {
+        if (data.colorNames && typeof data.colorNames === 'object') {
+          Object.keys(data.colorNames).forEach(function (k) { if (typeof data.colorNames[k] === 'string' && data.colorNames[k].trim()) names[k] = data.colorNames[k]; });
+          saveNames();
+        }
+        return getAll();
+      }).then(function (all) {
+        index = {}; all.forEach(remember); deps.render();
+        alert(T(keep.length + ' notes restored.', keep.length + ' notater er gjenopprettet.') +
+          (old ? ' ' + T(old + ' older than 3 months were left out.', old + ' eldre enn 3 måneder ble utelatt.') : ''));
+      });
+    }).catch(function (e) { if (window.console) console.error(e); alert(bad); });
   }
 
   function deleteAll() {
