@@ -1287,7 +1287,7 @@
     if (notesStarted) return;
     notes(function (N) {
       notesStarted = true;
-      N.init({ T: T, render: rerender, showDate: showDate, isTouch: touchOnly, dayTitle: dayTitle, isoWeek: isoWeek, isOffDay: isOffDay });
+      N.init({ T: T, render: rerender, showDate: showDate, isLarge: isLarge, isTouch: touchOnly, dayTitle: dayTitle, isoWeek: isoWeek, isOffDay: isOffDay });
       N.listTools({ search: $('notesSearch'), filterBtn: $('notesFilterBtn'), filterMenu: $('notesFilterMenu'), colorsBtn: $('notesColorsBtn'), colorsMenu: $('notesColorsMenu'), picsBtn: $('notesPicsBtn'), exportBtn: $('notesExport'), backupBtn: $('notesBackup'), restoreBtn: $('notesRestore'), restoreFile: $('notesRestoreFile'), backupHint: $('notesBackupHint'), onRestored: openNotesPage, list: $('notesList'), empty: $('notesEmpty') });
     });
   }

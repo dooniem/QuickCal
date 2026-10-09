@@ -1483,9 +1483,13 @@ window.QuickCalNotes = (function () {
   }
   function showUndo(message, undo) {
     if (undoBox) undoBox.remove();
-    var box = el('div', 'noteUndo');
-    box.appendChild(el('span', '', message));
-    var b = el('button', '', T('Undo', 'Angre'));
+    // A normal-size window: just a small button in the top right corner (the message is its tooltip),
+    // so it hides little of the calendar. Maximized: the message and the button at the bottom.
+    var small = !(deps.isLarge && deps.isLarge());
+    var box = el('div', 'noteUndo' + (small ? ' small' : ''));
+    if (!small) box.appendChild(el('span', '', message));
+    var b = el('button', '', (small ? '↶ ' : '') + T('Undo', 'Angre'));
+    if (small) b.title = message;
     b.addEventListener('click', function (ev) { ev.stopPropagation(); box.remove(); undoBox = null; undo(); });
     box.appendChild(b);
     document.body.appendChild(box);
