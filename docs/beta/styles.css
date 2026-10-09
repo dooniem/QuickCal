@@ -1,0 +1,167 @@
+/* QuickCal Web - same look as the Windows app (white, dark blue headers, red holidays). */
+:root {
+  --blue: #143275;
+  --week-blue: #677de1;
+  --holiday: rgba(245, 39, 63, 0.59);
+  --hover: #32dcf2;
+  --font: "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif;
+}
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+html, body { margin: 0; height: 100%; background: #fff; color: #000; font-family: var(--font); overflow: hidden; overscroll-behavior: none; }
+/* Swipes are handled by the app (see app.js), not by the browser */
+#scaler { touch-action: none; }
+button { font-family: inherit; color: inherit; }
+.hidden { display: none !important; }
+
+/* The app is designed at a fixed size and scaled to the window, like WPF's Viewbox */
+#stage { position: fixed; inset: 0; background: #fff; }
+#scaler { position: absolute; left: 0; top: 0; transform-origin: 0 0; background: #fff; }
+.page { position: relative; width: 100%; height: 100%; }
+
+/* ---------- Month blocks (8 x 8 grid: bar, day labels, 6 date rows) ---------- */
+.months3 { display: grid; grid-template-columns: 1fr 1fr 1fr; column-gap: 8px; height: 200px; }
+.month { display: grid; grid-template-columns: repeat(8, 1fr); grid-template-rows: repeat(8, 1fr); min-width: 0; min-height: 0; }
+.bar { grid-row: 1; grid-column: 1 / span 8; background: var(--blue); }
+.barText { grid-row: 1; color: #fff; display: flex; align-items: center; justify-content: center; white-space: nowrap; overflow: hidden; line-height: 1; z-index: 1; }
+.barText.clickable { cursor: pointer; border: 1px solid transparent; }
+.barText.clickable:hover { border-color: var(--hover); }
+.nav { grid-row: 1; z-index: 1; display: flex; align-items: center; justify-content: center; color: #fff; cursor: pointer;
+       background: transparent; border: 2px solid transparent; padding: 1px; }
+.nav:hover { border-color: var(--hover); }
+.nav svg { width: 100%; height: 100%; }
+.dayLabel { grid-row: 2; border: 2px solid #000; display: flex; align-items: center; justify-content: center; white-space: nowrap; overflow: hidden; line-height: 1; }
+
+.cell { border: 1px solid #000; display: flex; align-items: center; justify-content: center; line-height: 1; position: relative; min-width: 0; min-height: 0; }
+.cell.day { cursor: default; }
+.cell.day:hover { box-shadow: inset 0 0 0 1px var(--hover); border-color: var(--hover); }
+.cell.week { background: var(--week-blue); color: #fff; }
+.cell.today { background: var(--blue); color: #fff; border: 2px solid red; }
+.cell.today:hover { box-shadow: none; border-color: red; }
+.cell.holiday { background: var(--holiday); color: #fff; }
+.cell.gold { background: url("../assets/gold_texture.jpg") center / 100% 100%; font-weight: bold; opacity: 0.8; }
+/* Today on 5 September: same faded gold, but drawn without opacity so the red border stays crisp */
+.cell.today.gold { color: #000; opacity: 1; background: linear-gradient(rgba(255,255,255,.2), rgba(255,255,255,.2)), url("../assets/gold_texture.jpg") center / 100% 100%; }
+
+/* ---------- Year view ---------- */
+#yearView { display: grid; grid-template-rows: 34px 1fr 20px; }
+.yearBar { margin: 4px 4px 2px; background: var(--blue); color: #fff; display: grid; grid-template-columns: 44px 1fr 44px; align-items: stretch; }
+.yearBar .navBtn { background: transparent; border: 2px solid transparent; color: #fff; cursor: pointer; padding: 2px 8px; }
+.yearBar .navBtn:hover { border-color: var(--hover); }
+.yearBar .navBtn svg { width: 100%; height: 100%; }
+#yearTitle { display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 20px; line-height: 1; }
+.yearGrid { display: grid; grid-template-columns: repeat(4, 1fr); grid-template-rows: repeat(3, 1fr); min-height: 0; }
+.yearGrid .month { margin: 4px; }
+
+/* ---------- Bottom row ---------- */
+.bottomRow.three { display: grid; grid-template-columns: 1fr 8px 1fr 8px 1fr; height: 20px; align-items: center; }
+.bottomRow > :nth-child(1) { grid-column: 1; }
+.bottomRow > :nth-child(2) { grid-column: 3; }
+.bottomRow > :nth-child(3) { grid-column: 5; }
+.smallInfo { font-size: 10.5px; padding-left: 6px; white-space: nowrap; display: inline-block; }
+.fitLeft { overflow: hidden; }
+.bottomRow > .fitLeft.wide { grid-column: 1 / 4; }   /* the hint may use the free part of the middle column */
+.spaceKey { display: inline-block; width: 2.6em; height: 1.05em; margin-right: 0.15em; vertical-align: middle; border: 1px solid #555; border-bottom-width: 2px; border-radius: 0.25em; background: #f4f4f4; }
+.arrowKey { display: inline-block; box-sizing: content-box; width: 1.35em; height: 1.31em; line-height: 1.31em; font-size: 0.8em; text-align: center; margin-right: 0.15em; vertical-align: middle; border: 1px solid #555; border-bottom-width: 2px; border-radius: 0.3em; background: #f4f4f4; }
+.right { display: flex; justify-content: flex-end; }
+.linkBox { border: 1px solid #000; background: #fff; font-size: 12px; line-height: 15px; padding: 0 4px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; }
+.linkBox:hover { background: #eee; }
+.gear { width: 14px; height: 14px; }
+.tagline { text-align: center; font-size: 12.5px; white-space: nowrap; overflow: hidden; }
+
+/* ---------- Text pages (settings, install, autostart, getting started) ---------- */
+.textPage { padding: 0 10px; font-size: 13px; }
+.textPage h1 { font-size: 16px; margin: 4px 0 6px; }
+.textPage p { margin: 0 0 4px; font-size: 11.5px; line-height: 1.35; }
+.textPage ol { margin: 0 0 4px; padding-left: 26px; font-size: 11.5px; line-height: 1.35; }
+.textPage .tip { color: #444; font-size: 10.5px; }
+.btn { background: rgba(8, 8, 8, 0.2); border: 0; font-size: 11px; padding: 0 10px; height: 28px; cursor: pointer; }
+.btn:hover { background: rgba(8, 8, 8, 0.3); }
+.btn:active { background: rgba(8, 8, 8, 0.4); }
+.btn:disabled { opacity: 0.5; cursor: default; }
+.btn.topRight { position: absolute; top: 4px; right: 15px; }
+.btn.back { position: absolute; left: 13px; bottom: 3px; width: 40px; height: 32px; padding: 4px 8px; }
+.btn.back svg { width: 100%; height: 100%; }
+.btn.inline { margin: 2px 0 6px 26px; }
+.stackBottomRight { position: absolute; right: 15px; bottom: 6px; display: flex; flex-direction: column; gap: 4px; }
+.setRow { display: flex; align-items: center; gap: 10px; margin: 2px 0 2px 5px; min-height: 30px; }
+.setRow select { font-size: 11px; height: 22px; min-width: 120px; }
+.check { background: transparent; border: 0; font-family: "Segoe UI Symbol", var(--font); font-size: 26px; line-height: 26px; padding: 0; cursor: pointer; color: #000; }
+.check.on { color: blue; }
+/* Touch-only devices: a switch instead of the ☐/🗹 glyphs, which phones draw as odd emoji */
+.touch .check { -webkit-appearance: none; appearance: none; -webkit-tap-highlight-color: transparent; width: 34px; height: 20px; border-radius: 10px; background: #c8c8c8; position: relative; transition: background .15s; }
+.touch .check::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.3); transition: left .15s; }
+.touch .check.on { background: blue; }
+.touch .check.on::after { left: 16px; }
+#weeksInput { width: 25px; height: 19px; text-align: center; font-size: 12px; padding: 0; }
+
+.wRow { display: grid; grid-template-columns: 24px 1fr auto; align-items: center; min-height: 28px; margin: 2px 0; column-gap: 0; }
+.wIcon { width: 16px; height: 16px; }
+.wText { font-size: 12px; font-weight: 600; }
+.wText small { font-weight: 400; font-size: 11px; }
+.wBtn { min-width: 150px; height: 24px; }
+.tipRow { align-items: start; }
+.tipRow .wIcon { margin-top: 1px; }
+.wTip { grid-column: 2 / span 2; font-size: 10.5px; color: #333; line-height: 1.35; }
+.miniWeek { width: 16px; height: 16px; background: var(--blue); border: 1px solid var(--week-blue); color: #fff; font-size: 9px; font-weight: bold; display: flex; align-items: center; justify-content: center; }
+.okBtn { position: absolute; right: 15px; bottom: 6px; min-width: 90px; height: 30px; font-size: 12px; font-weight: 600; }
+
+/* ---------- Popups (month/year picker, holiday tooltip) ---------- */
+.menu { position: fixed; z-index: 10; background: #fff; border: 1px solid #999; box-shadow: 0 4px 14px rgba(0,0,0,.2); padding: 2px 0; font-size: 12px; min-width: 110px; max-height: calc(100vh - 4px); overflow-y: auto; }
+.menu div { padding: 1px 14px 1px 24px; line-height: 15px; cursor: pointer; position: relative; white-space: nowrap; }
+.menu div:hover { background: #e5f1fb; }
+.menu div.current::before { content: "✓"; position: absolute; left: 7px; }
+.tooltip { position: fixed; z-index: 11; background: #fff; border: 1px solid #888; padding: 3px 7px; font-size: 12px; box-shadow: 0 2px 6px rgba(0,0,0,.15); pointer-events: none; white-space: nowrap; }
+
+/* ---------- Notes (beta) ---------- */
+.cell.pick { cursor: pointer; }
+/* A day with a note: light hatch and a small notepad in the top right corner */
+.cell.note::before { content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: repeating-linear-gradient(135deg, rgba(255,255,255,.28) 0 1.5px, transparent 1.5px 5px); }
+.cell.note:not(.noteColored):not(.today):not(.holiday):not(.gold)::before {
+  background: repeating-linear-gradient(135deg, rgba(0,0,0,.13) 0 1px, transparent 1px 5px); }
+.cell.note::after { content: ""; position: absolute; top: 1px; right: 1px; width: 32%; height: 36%; max-width: 9px; max-height: 10px; pointer-events: none;
+  background: no-repeat center / contain url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 12'%3E%3Cpath d='M1 1.5h6l2 2V11H1z' fill='%23fff8c4' stroke='%23333' stroke-width='.9'/%3E%3Cpath d='M2.8 5h4.4M2.8 7h4.4M2.8 9h3' stroke='%23333' stroke-width='.8'/%3E%3C/svg%3E"); }
+.cell.noteColored { color: #fff; }
+/* Holiday, today or birthday with a colored note: the color shows as a corner mark, the day keeps its look */
+.cell.noteCorner { background-image: linear-gradient(225deg, var(--note-color) 0 28%, transparent 28%); }
+.cell.today.gold.noteCorner { background-image: linear-gradient(225deg, var(--note-color) 0 28%, transparent 28%), linear-gradient(rgba(255,255,255,.2), rgba(255,255,255,.2)), url("../assets/gold_texture.jpg"); background-size: auto, auto, 100% 100%; }
+.cell.gold.noteCorner:not(.today) { background-image: linear-gradient(225deg, var(--note-color) 0 28%, transparent 28%), url("../assets/gold_texture.jpg"); background-size: auto, 100% 100%; }
+
+.tooltip.noteTip { white-space: pre-wrap; max-width: 280px; line-height: 1.35; }
+.tipHoliday { font-weight: 600; margin-bottom: 2px; }
+.tipImages img { display: block; max-width: 260px; max-height: 140px; margin-top: 4px; }
+
+.noteEditor { position: fixed; z-index: 20; width: min(340px, calc(100vw - 16px)); background: #fff; border: 1px solid #888; border-radius: 4px;
+  box-shadow: 0 6px 22px rgba(0,0,0,.25); padding: 6px 8px 6px; font-size: 13px; font-family: var(--font); }
+.neHead { display: flex; align-items: baseline; gap: 6px; margin-bottom: 4px; }
+.neTitle { font-weight: 600; }
+.neHoliday { color: #b0102a; font-size: 12px; }
+.neClose { margin-left: auto; background: transparent; border: 0; cursor: pointer; font-size: 14px; padding: 0 2px; color: #555; }
+.neText { width: 100%; resize: vertical; min-height: 54px; max-height: 40vh; font: inherit; font-size: 13px; padding: 4px 5px; border: 1px solid #aaa; border-radius: 3px; }
+.touch .neText { font-size: 16px; }   /* iPhone zooms in on smaller text fields */
+.neImages { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.neThumb { position: relative; }
+.neThumb img { display: block; height: 52px; max-width: 90px; object-fit: cover; border: 1px solid #ccc; cursor: zoom-in; }
+.neThumbX { position: absolute; top: -5px; right: -5px; width: 16px; height: 16px; border-radius: 50%; border: 0; background: #444; color: #fff; font-size: 9px; line-height: 16px; padding: 0; cursor: pointer; }
+.neRow { display: flex; align-items: center; gap: 6px; margin-top: 5px; }
+.neColors { display: flex; gap: 4px; flex: 1; flex-wrap: wrap; }
+.neSwatch { width: 20px; height: 20px; border-radius: 50%; border: 2px solid transparent; box-shadow: 0 0 0 1px #999; cursor: pointer; padding: 0; }
+.neSwatch.none { background: linear-gradient(135deg, #fff 45%, #c00 45% 55%, #fff 55%); }
+.neSwatch.on { border-color: #fff; box-shadow: 0 0 0 2px #000; }
+.neBtn { background: rgba(8,8,8,.12); border: 0; border-radius: 3px; height: 26px; min-width: 32px; font-size: 15px; cursor: pointer; }
+.neBtn:hover { background: rgba(8,8,8,.22); }
+.neHint, .neInfo { color: #666; font-size: 10.5px; margin-top: 4px; }
+.noteImageView { position: fixed; inset: 0; z-index: 30; background: rgba(0,0,0,.8); display: flex; align-items: center; justify-content: center; cursor: zoom-out; }
+.noteImageView img { max-width: 95vw; max-height: 95vh; }
+
+.notesList { height: 134px; overflow-y: auto; border-top: 1px solid #ddd; margin-right: 0; }
+.noteRow { display: grid; grid-template-columns: 14px 120px 1fr auto auto; align-items: center; gap: 6px; padding: 2px 4px; border-bottom: 1px solid #eee; font-size: 11.5px; cursor: pointer; }
+.noteRow:hover { background: #e5f1fb; }
+.noteDot { width: 10px; height: 10px; border-radius: 50%; }
+.noteDot.plain { border: 1px solid #888; background: repeating-linear-gradient(135deg, #999 0 1px, #fff 1px 3px); }
+.noteDate { white-space: nowrap; }
+.noteFirst { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #333; }
+.noteRemove { background: transparent; border: 0; cursor: pointer; font-size: 12px; padding: 0 2px; }
+.notesList { margin-top: 8px; }
