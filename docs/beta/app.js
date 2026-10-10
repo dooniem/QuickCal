@@ -420,7 +420,8 @@
       var pw = Math.max(600, window.innerWidth - 20);
       notesZoom = Math.min(1, (window.innerWidth - 20) / pw);
       page.dataset.w = full ? Math.round(pw) : 600;
-      page.dataset.h = full ? Math.round(window.innerHeight / notesZoom - 24) : 220;
+      // room at the top and bottom, so the rounded corners of a phone screen do not cut the buttons
+      page.dataset.h = full ? Math.round((window.innerHeight - 2 * 26) / notesZoom) : 220;
     } else {
       // Margins around it, more at the sides than at the top and bottom (the page is centered by rescale)
       notesZoom = NOTES_ZOOM;
@@ -598,6 +599,50 @@
     var d = cellDate(cell);
     if (d) notes(function (N) { N.openEditor(cell, d, cell.dataset.tip); });
   });
+  // Touch: iOS gives no dblclick, so a double tap (or a long press) on a day opens its note here.
+  // The second tap may land on the small box the first tap opened, so it counts by position.
+  var lastTap = null, press = null;
+  function openTouched(date) {
+    var cell = document.querySelector('#' + currentPage + ' .cell.pick[data-date="' + date + '"]');
+    var d = cell && cellDate(cell);
+    if (!d) return;
+    ignoreDblClick = Date.now();
+    lastTap = null;
+    hideTip();
+    notes(function (N) { N.closePeek(); N.openEditor(cell, d, cell.dataset.tip); });
+  }
+  scalerEl.addEventListener('touchstart', function (e) {
+    clearTimeout(press && press.timer);
+    press = null;
+    if (e.touches.length !== 1 || !notesHere() || notes(function (N) { return N.isOpen(); }, false)) { lastTap = null; return; }
+    var p = e.touches[0];
+    if (lastTap && Date.now() - lastTap.t < 400 && Math.abs(p.clientX - lastTap.x) + Math.abs(p.clientY - lastTap.y) < 30) {
+      press = { x: p.clientX, y: p.clientY, date: lastTap.date, double: true };
+      return;
+    }
+    var cell = e.target.closest && e.target.closest('.cell.pick');
+    if (!cell) { lastTap = null; return; }
+    press = { x: p.clientX, y: p.clientY, date: cell.dataset.date, t: Date.now() };
+    press.timer = setTimeout(function () { press.long = true; openTouched(press.date); }, 500);
+  }, { passive: true });
+  scalerEl.addEventListener('touchmove', function (e) {
+    var p = e.touches[0];
+    if (press && p && Math.abs(p.clientX - press.x) + Math.abs(p.clientY - press.y) > 10) { clearTimeout(press.timer); press = null; lastTap = null; }
+  }, { passive: true });
+  scalerEl.addEventListener('touchend', function (e) {
+    var p = press;
+    press = null;
+    if (!p) return;
+    clearTimeout(p.timer);
+    if (p.long || p.double) {
+      e.preventDefault();   // no click after it (that would close the note again)
+      if (p.double) openTouched(p.date);
+      lastTap = null;
+      return;
+    }
+    lastTap = { x: p.x, y: p.y, date: p.date, t: Date.now() };
+  });
+  scalerEl.addEventListener('touchcancel', function () { if (press) clearTimeout(press.timer); press = null; });
   document.addEventListener('click', function (e) {
     if (!$('menu').contains(e.target) && !(e.target.closest && e.target.closest('.clickable'))) $('menu').classList.add('hidden');
   });
@@ -1153,6 +1198,8 @@
 
   function applyTexts() {
     document.documentElement.classList.toggle('touch', touchOnly());
+    // A phone (small touch screen): the note editor leaves out its help text, so it takes less room
+    document.documentElement.classList.toggle('phone', touchOnly() && Math.min(screen.width, screen.height) < 600);
     if (currentPage === 'yearView' && +$('yearView').dataset.w !== yearLayout().w) { showPage('yearView'); renderYearView(); }
     [$('holidaysCheck'), $('easterCheck'), $('notesCheck')].forEach(function (b) { setCheck(b, isChecked(b)); });
     document.documentElement.lang = norwegian() ? 'no' : 'en';
