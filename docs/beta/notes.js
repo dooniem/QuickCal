@@ -550,7 +550,7 @@ window.QuickCalNotes = (function () {
     var swatches = el('div', 'neColors');
     [''].concat(COLORS.map(function (c) { return c.id; })).forEach(function (id) {
       var b = el('button', 'neSwatch' + (id ? '' : ' none'), String(colorNo(id)));
-      if (id) b.style.background = colorHex(id);
+      if (id) b.style.backgroundColor = colorHex(id);
       b.title = colorNo(id) + ' · ' + colorLabel(id); b.dataset.color = id;
       swatches.appendChild(b);
     });
@@ -582,8 +582,24 @@ window.QuickCalNotes = (function () {
     document.body.appendChild(box);
     position(box, cell);
 
+    // Two notes on a day may not have the same color: the colors another note has on this note's days are
+    // greyed out (No color is always free). A color the note already has stays, so older notes still open.
+    function takenColors() {
+      var taken = {}, last = note.endDate && note.endDate > day ? note.endDate : day;
+      for (var d = day, i = 0; d <= last && i < MAX_SPAN_DAYS; d = addDays(d, 1), i++) {
+        listAt(d).forEach(function (o) { if (o.k !== k && o.k !== series && index[o.k] && index[o.k].color) taken[index[o.k].color] = 1; });
+      }
+      return taken;
+    }
     function showColor() {
-      Array.prototype.forEach.call(swatches.children, function (b) { b.classList.toggle('on', b.dataset.color === (note.color || '')); });
+      var taken = takenColors();
+      Array.prototype.forEach.call(swatches.children, function (b) {
+        var c = b.dataset.color, off = !!taken[c] && c !== (note.color || '');
+        b.classList.toggle('on', c === (note.color || ''));
+        b.classList.toggle('taken', off);
+        b.disabled = off;
+        b.title = colorNo(c) + ' · ' + colorLabel(c) + (off ? ' · ' + T('used by the other note this day', 'brukt av det andre notatet denne dagen') : '');
+      });
     }
     function showImages() {
       images.innerHTML = '';
@@ -656,6 +672,7 @@ window.QuickCalNotes = (function () {
       if (v > endInput.max) v = endInput.max;
       endInput.value = v;
       note.endDate = v > day ? v : '';
+      showColor();   // more days can mean more colors taken
       saveSoon(0);
     });
     area.addEventListener('paste', function (e) {
@@ -665,7 +682,7 @@ window.QuickCalNotes = (function () {
     box.addEventListener('dragover', function (e) { e.preventDefault(); });
     box.addEventListener('drop', function (e) { e.preventDefault(); addFiles(e.dataTransfer && e.dataTransfer.files); });
     swatches.addEventListener('click', function (e) {
-      var b = e.target.closest('.neSwatch'); if (!b) return;
+      var b = e.target.closest('.neSwatch'); if (!b || b.disabled) return;
       note.color = b.dataset.color; showColor(); saveSoon(0);
     });
     addImg.addEventListener('click', function () { file.click(); });
