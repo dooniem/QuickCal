@@ -25,7 +25,7 @@
   var DEFAULTS = {
     language: 'UseSystemLanguage', // 'English' | 'Norwegian' | 'UseSystemLanguage'
     showHolidays: true,
-    notesEnabled: true,     // Notes on/off. Off only hides them: saved notes are kept (still deleted after 3 months)
+    notesEnabled: true,     // Notes on/off. Off only hides them: saved notes are kept (still deleted when older than the weeks picked in the notes list)
     easterFullWeek: true,
     summerWeeks: 3,
     appSize: null,          // last normal window size of the installed app {w, h} (inner size)
@@ -975,14 +975,15 @@
     $('notesList').innerHTML = '';
     $('notesEmpty').classList.remove('hidden');
     var installed = isInstalled();
+    var kept = notes(function (N) { return N.keptFor(); }, T('for 12 weeks back', 'i 12 uker bakover'));
     $('notesEmpty').textContent = installed
-      ? T('No notes yet. Click a day in the calendar and then ✎ to write one. Notes are kept for 3 months.',
-          'Ingen notater ennå. Klikk på en dag i kalenderen og deretter ✎ for å skrive et. Notater tas vare på i 3 måneder.')
+      ? T('No notes yet. Click a day in the calendar and then ✎ to write one. Notes are kept ' + kept + '.',
+          'Ingen notater ennå. Klikk på en dag i kalenderen og deretter ✎ for å skrive et. Notater tas vare på ' + kept + '.')
       : touchOnly()
-        ? T('Write short notes on days: tap a day and then ✎. Pick a color and add pictures. Notes are kept for 3 months, on this device only.',
-            'Skriv korte notater på dager: trykk på en dag og deretter ✎. Velg farge og legg til bilder. Notatene tas vare på i 3 måneder, bare på denne enheten.')
-        : T('Write short notes on days: click a day and then ✎. Pick a color, paste pictures, and hover over the day to read the note. Notes are kept for 3 months, on this device only.',
-            'Skriv korte notater på dager: klikk på en dag og deretter ✎. Velg farge, lim inn bilder, og hold musen over dagen for å lese notatet. Notatene tas vare på i 3 måneder, bare på denne enheten.');
+        ? T('Write short notes on days: tap a day and then ✎. Pick a color and add pictures. Notes are kept ' + kept + ', on this device only.',
+            'Skriv korte notater på dager: trykk på en dag og deretter ✎. Velg farge og legg til bilder. Notatene tas vare på ' + kept + ', bare på denne enheten.')
+        : T('Write short notes on days: click a day and then ✎. Pick a color, paste pictures, and hover over the day to read the note. Notes are kept ' + kept + ', on this device only.',
+            'Skriv korte notater på dager: klikk på en dag og deretter ✎. Velg farge, lim inn bilder, og hold musen over dagen for å lese notatet. Notatene tas vare på ' + kept + ', bare på denne enheten.');
     $('notesInstallInfo').classList.toggle('hidden', installed);
     $('notesInstallBtn').classList.toggle('hidden', installed);
     notes(function (N) { N.fillList($('notesList'), $('notesEmpty')); });
@@ -994,6 +995,8 @@
     var here = !!notes(function () { return true; }, false);
     $('notesBackup').classList.toggle('hidden', !here);
     $('notesDropbox').classList.toggle('hidden', !here);
+    $('notesKeep').classList.toggle('hidden', !here);
+    $('notesKeepMenu').classList.add('hidden');
     showDropboxState();
     $('notesBackupMenu').classList.add('hidden');
     $('notesFilterMenu').classList.add('hidden');
@@ -1485,7 +1488,7 @@
       notesStarted = true;
       N.init({ T: T, render: rerender, showDate: showDate, isLarge: isLarge, isTouch: touchOnly, dayTitle: dayTitle, isoWeek: isoWeek, isOffDay: isOffDay });
       N.onSync(showDropboxState);
-      N.listTools({ search: $('notesSearch'), filterBtn: $('notesFilterBtn'), filterMenu: $('notesFilterMenu'), colorsBtn: $('notesColorsBtn'), colorsMenu: $('notesColorsMenu'), picsBtn: $('notesPicsBtn'), calBtn: $('notesCalBtn'), exportBtn: $('notesExport'), backupBtn: $('notesBackup'), backupMenu: $('notesBackupMenu'), dropboxBtn: $('notesDropbox'), restoreFile: $('notesRestoreFile'), backupHint: $('notesBackupHint'), onRestored: openNotesPage, list: $('notesList'), empty: $('notesEmpty') });
+      N.listTools({ search: $('notesSearch'), filterBtn: $('notesFilterBtn'), filterMenu: $('notesFilterMenu'), colorsBtn: $('notesColorsBtn'), colorsMenu: $('notesColorsMenu'), picsBtn: $('notesPicsBtn'), calBtn: $('notesCalBtn'), exportBtn: $('notesExport'), backupBtn: $('notesBackup'), backupMenu: $('notesBackupMenu'), keepBtn: $('notesKeep'), keepMenu: $('notesKeepMenu'), dropboxBtn: $('notesDropbox'), restoreFile: $('notesRestoreFile'), backupHint: $('notesBackupHint'), onRestored: openNotesPage, list: $('notesList'), empty: $('notesEmpty') });
     });
   }
   startNotes();
