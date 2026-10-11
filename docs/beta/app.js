@@ -389,7 +389,20 @@
   // Shrink the bottom-left hint to fit its space. On the calendar page the hint may also use the free part
   // of the middle column, left of the Settings button. Measured on the shown page, and on phones with
   // some room to spare: iPhone draws small text in the scaled page a little wider than it measures.
+  // Settings shows its name only when there is room: with the notes button and "Always on top" beside it
+  // (a PC with notes on), it is a gear the same size as the other two, so the key hint keeps its room.
+  // On phones and tablets ("Always on top" does not exist there), or with notes off, the name stays.
+  function settingsLabels() {
+    ['settingsBtn1', 'settingsBtn2'].forEach(function (id) {
+      var b = $(id), others = 0;
+      Array.prototype.forEach.call(b.parentElement.querySelectorAll('.linkBox'), function (o) { if (o !== b && !o.classList.contains('hidden')) others++; });
+      b.classList.toggle('iconOnly', others >= 2);
+      b.title = others >= 2 ? T('Settings', 'Innstillinger') : '';
+      b.setAttribute('aria-label', T('Settings', 'Innstillinger'));
+    });
+  }
   function fitInfoTexts() {
+    settingsLabels();
     var spare = touchOnly() ? 0.9 : 1;
     [$('infoText'), $('yearInfoText')].forEach(function (e) {
       var box = e.parentElement, page = $(e.closest('.page').id), colWidth = (+page.dataset.w - 16) / 3;
@@ -407,6 +420,16 @@
       var avail = width * spare, w = e.offsetWidth;
       if (w > avail) e.style.fontSize = size * avail / w + 'px';
     });
+  }
+  // Buttons can come and go after the start ("Always on top" shows once pip.js knows the browser has it,
+  // notes on or off): fit the hint again whenever the buttons' row changes width
+  if (window.ResizeObserver) {
+    var refit = null;
+    var ro = new ResizeObserver(function () {
+      if (refit) return;
+      refit = requestAnimationFrame(function () { refit = null; fitInfoTexts(); });
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('.bottomRow .right .linkBox'), function (b) { ro.observe(b); });
   }
 
   // Notes list: fills a maximized window (like the year view), the usual small page otherwise.
