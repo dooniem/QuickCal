@@ -1024,6 +1024,7 @@
         : state === 'error' ? T('could not sync just now. QuickCal tries again by itself.', 'fikk ikke synket akkurat nå. QuickCal prøver igjen av seg selv.')
         : last ? T('last synced ', 'sist synket ') + dayTitle(new Date(last), true) + ' ' + new Date(last).toLocaleTimeString(T('en', 'nb'), { hour: '2-digit', minute: '2-digit' }) + '.'
         : T('not synced yet.', 'ikke synket ennå.'));
+      point(T('Stored in:', 'Lagres i:'), T('the folder ' + DBX.folder + ' in your Dropbox.', 'mappen ' + DBX.folder + ' i din Dropbox.'));
       point(T('Other devices:', 'Andre enheter:'), T('open QuickCal there and connect to the same Dropbox account.', 'åpne QuickCal der og koble til den samme Dropbox-kontoen.'));
     }
     $('dropboxConnect').classList.toggle('hidden', on);
@@ -1070,7 +1071,8 @@
   });
   $('dropboxSyncNow').addEventListener('click', function () { notes(function (N) { N.syncNow(); }); });
   $('dropboxDisconnect').addEventListener('click', function () {
-    if (!confirm(T('Disconnect from Dropbox?\n\nThe notes stay both here and in Dropbox.', 'Koble fra Dropbox?\n\nNotatene blir liggende både her og i Dropbox.'))) return;
+    if (!confirm(T('Disconnect from Dropbox?\n\nSyncing stops on this device. The notes stay both here and in Dropbox, in the folder ' + DBX.folder + '. To remove them from Dropbox too, delete that folder in Dropbox.',
+                   'Koble fra Dropbox?\n\nSynkingen stopper på denne enheten. Notatene blir liggende både her og i Dropbox, i mappen ' + DBX.folder + '. Vil du fjerne dem fra Dropbox også, sletter du den mappen i Dropbox.'))) return;
     DBX.disconnect().then(function () { showDropboxState(); fillDropboxPage(); });
   });
 
