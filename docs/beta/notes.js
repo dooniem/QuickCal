@@ -1380,11 +1380,14 @@ window.QuickCalNotes = (function () {
     function weeks() { return cleanWeeks(input.value === '' ? keepWeeks : input.value); }
     function showInfo() {
       var w = weeks(), opt = { weekday: 'short', day: 'numeric', month: 'short' };
-      var from = parseKey(oldestKept(w)).toLocaleDateString(lang(), opt), monday = parseKey(oldestKept(0)).toLocaleDateString(lang(), opt);
+      var from = parseKey(oldestKept(w)).toLocaleDateString(lang(), opt);
       info.innerHTML = '';
       info.appendChild(el('p', 'kmMain', T('Notes older than ' + from + ' will be deleted.', 'Notater eldre enn ' + from + ' vil slettes.')));
-      info.appendChild(el('p', '', T('Weeks are counted from Monday. 0 = only this week (from ' + monday + '), 1 = also last week, and so on. Notes ahead in time and repeating notes still running are never deleted. Standard: 12.',
-                                     'Ukene telles fra mandag. 0 = bare denne uken (fra ' + monday + '), 1 = også forrige uke, og så videre. Notater frem i tid og gjentakelser som pågår, slettes aldri. Standard: 12.')));
+      [T('Weeks are counted from Monday of this week.', 'Ukene telles fra mandag inneværende uke.'),
+       T('0 deletes all notes older than this week, 1 keeps notes up to and including last week, and so on.',
+         '0 vil slette alle notater eldre enn inneværende uke, 1 vil ta vare på notater til og med forrige uke, og så videre.'),
+       T('Notes ahead in time and repeating notes still running are never deleted.', 'Notater frem i tid og gjentakelser som pågår, slettes aldri.'),
+       T('Standard: 12 weeks.', 'Standard: 12 uker.')].forEach(function (line) { info.appendChild(el('p', '', line)); });
     }
     function apply() {
       var w = weeks();
