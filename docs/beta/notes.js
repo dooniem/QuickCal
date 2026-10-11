@@ -7,7 +7,30 @@ window.QuickCalNotes = (function () {
   'use strict';
 
   var DB_NAME = 'quickcal-beta-notes', STORE = 'notes';
-  var KEEP_MONTHS = 3;
+  // How many weeks back notes are kept (whole weeks, Monday to Sunday). 0 = only this week. The user picks it
+  // with the gear in the notes list; it goes with the notes in Dropbox, so every device keeps the same.
+  var KEEP_KEY = 'quickcal-beta.keepWeeks', KEEP_TIME_KEY = 'quickcal-beta.keepWeeksUpdated';
+  var KEEP_DEFAULT = 12, KEEP_MAX = 520;
+  function cleanWeeks(v) { v = Math.floor(+v); return isFinite(v) && v >= 0 ? Math.min(v, KEEP_MAX) : KEEP_DEFAULT; }
+  var keepWeeks = KEEP_DEFAULT;
+  try { var kw = localStorage.getItem(KEEP_KEY); if (kw !== null) keepWeeks = cleanWeeks(kw); } catch (e) { /* storage blocked */ }
+  function saveKeep(weeks, fromSync, time) {
+    keepWeeks = cleanWeeks(weeks);
+    try {
+      localStorage.setItem(KEEP_KEY, String(keepWeeks));
+      localStorage.setItem(KEEP_TIME_KEY, String(time || Date.now()));
+    } catch (e) { /* storage blocked */ }
+    if (!fromSync) syncSoon();
+  }
+  /** "for 12 weeks back" / "i 12 uker bakover" ("this week only" for 0) */
+  function keptFor() {
+    return keepWeeks === 0 ? T('this week only', 'bare denne uken') : T('for ' + keepText() + ' back', 'i ' + keepText() + ' bakover');
+  }
+  /** "12 weeks" / "12 uker", for the texts that say how long notes are kept */
+  function keepText() {
+    return keepWeeks === 0 ? T('this week', 'denne uken')
+      : keepWeeks === 1 ? T('1 week', '1 uke') : T(keepWeeks + ' weeks', keepWeeks + ' uker');
+  }
   var MAX_IMAGES = 4, MAX_IMAGE_SIDE = 1600;
 
   // Colors not used by the calendar itself (holiday red, today/week blue, birthday gold)
@@ -75,8 +98,11 @@ window.QuickCalNotes = (function () {
     if (text != null) e.textContent = text;
     return e;
   }
-  function oldestKept() {
-    var t = new Date(); return key(new Date(t.getFullYear(), t.getMonth() - KEEP_MONTHS, t.getDate()));
+  // The first day kept: Monday of this week, keepWeeks weeks back. Notes that ended before it are deleted.
+  function oldestKept(weeks) {
+    if (weeks == null) weeks = keepWeeks;
+    var t = new Date(), monday = new Date(t.getFullYear(), t.getMonth(), t.getDate() - (t.getDay() + 6) % 7);
+    return key(new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() - 7 * weeks));
   }
 
   // ---------- Storage (IndexedDB) ----------
@@ -571,10 +597,10 @@ window.QuickCalNotes = (function () {
     var panel = el('div', 'neRepeat hidden');
     box.appendChild(panel);
     var hint = el('div', 'neHint', deps.isTouch()
-      ? T('Saved automatically. Kept for 3 months. ☑ makes a checklist: tap a box to tick it.',
-          'Lagres automatisk. Tas vare på i 3 måneder. ☑ lager sjekkliste: trykk på en boks for å krysse av.')
-      : T('Saved automatically. Paste pictures with Ctrl+V. Kept for 3 months. ☑ makes a checklist: click a box to tick it. Ctrl+Enter saves and closes.',
-          'Lagres automatisk. Lim inn bilder med Ctrl+V. Tas vare på i 3 måneder. ☑ lager sjekkliste: klikk på en boks for å krysse av. Ctrl+Enter lagrer og lukker.'));
+      ? T('Saved automatically. Kept ' + keptFor() + '. ☑ makes a checklist: tap a box to tick it.',
+          'Lagres automatisk. Tas vare på ' + keptFor() + '. ☑ lager sjekkliste: trykk på en boks for å krysse av.')
+      : T('Saved automatically. Paste pictures with Ctrl+V. Kept ' + keptFor() + '. ☑ makes a checklist: click a box to tick it. Ctrl+Enter saves and closes.',
+          'Lagres automatisk. Lim inn bilder med Ctrl+V. Tas vare på ' + keptFor() + '. ☑ lager sjekkliste: klikk på en boks for å krysse av. Ctrl+Enter lagrer og lukker.'));
     box.appendChild(hint);
 
     var note = { date: k, text: '', color: '', images: [], endDate: '', repeat: null, series: series || '', dirty: !series };
@@ -916,7 +942,7 @@ window.QuickCalNotes = (function () {
       '<li><b>Annenhver mandag</b>: Ukentlig · hver 2. uke · ma.</li>',
       '<li><b>Bursdag</b>: Årlig.</li></ul>',
       '<h3>Enkeltdager og hele serien</h3>',
-      '<p>Åpner du en dag i serien, gjelder det du skriver bare den dagen (for eksempel avkrysninger i en sjekkliste). Dagen blir et eget notat og slettes etter 3 måneder som andre notater, mens serien fortsetter. <i>Rediger serien</i> endrer tekst, farge og regel for alle dagene, og <i>Starter</i> kan flyttes der. <i>Slett denne dagen</i> hopper over én dag, og <i>Avslutt serien her</i> stopper den fra og med den dagen.</p>'
+      '<p>Åpner du en dag i serien, gjelder det du skriver bare den dagen (for eksempel avkrysninger i en sjekkliste). Dagen blir et eget notat og slettes når den er eldre enn ' + keepText() + ' bakover, som andre notater, mens serien fortsetter. <i>Rediger serien</i> endrer tekst, farge og regel for alle dagene, og <i>Starter</i> kan flyttes der. <i>Slett denne dagen</i> hopper over én dag, og <i>Avslutt serien her</i> stopper den fra og med den dagen.</p>'
     ] : [
       '<h2>How repeating works</h2>',
       '<p><b>Repeat</b> daily, weekly, monthly or yearly. "Every 2" means every other time. Weekly: pick one or more weekdays. Monthly: <i>on day 15</i> (the note\'s date) or the <i>first … last</i> weekday of the month.</p>',
@@ -932,7 +958,7 @@ window.QuickCalNotes = (function () {
       '<li><b>Every other Monday</b>: Weekly · every 2 weeks · Mo.</li>',
       '<li><b>Birthday</b>: Yearly.</li></ul>',
       '<h3>One day or the whole series</h3>',
-      '<p>When you open a day of the series, what you write applies to that day only (ticked checklist items, for example). The day becomes a note of its own and is deleted after 3 months like other notes, while the series goes on. <i>Edit series</i> changes text, color and rule for all days, and <i>Starts</i> can be moved there. <i>Delete this day</i> skips one day, and <i>End series here</i> stops it from that day on.</p>'
+      '<p>When you open a day of the series, what you write applies to that day only (ticked checklist items, for example). The day becomes a note of its own and is deleted when it is older than ' + keepText() + ' back, like other notes, while the series goes on. <i>Edit series</i> changes text, color and rule for all days, and <i>Starts</i> can be moved there. <i>Delete this day</i> skips one day, and <i>End series here</i> stops it from that day on.</p>'
     ];
     helpBox = el('div', 'noteHelp');
     var inner = el('div', 'nhBox');
@@ -1086,6 +1112,16 @@ window.QuickCalNotes = (function () {
     });
     t.backupMenu.addEventListener('click', function (e) { e.stopPropagation(); });
     document.addEventListener('click', function () { t.backupMenu.classList.add('hidden'); });
+    // The gear: how many weeks back notes are kept
+    t.keepBtn.title = T('How long notes are kept', 'Hvor lenge notater tas vare på');
+    t.keepBtn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      t.filterMenu.classList.add('hidden'); t.colorsMenu.classList.add('hidden'); t.backupMenu.classList.add('hidden');
+      if (t.keepMenu.classList.contains('hidden')) { fillKeepMenu(); t.keepMenu.classList.remove('hidden'); t.keepMenu.querySelector('input').focus(); }
+      else t.keepMenu.classList.add('hidden');
+    });
+    t.keepMenu.addEventListener('click', function (e) { e.stopPropagation(); });
+    document.addEventListener('click', function () { t.keepMenu.classList.add('hidden'); });
     t.restoreFile.addEventListener('change', function () {
       var f = t.restoreFile.files && t.restoreFile.files[0];
       t.restoreFile.value = '';
@@ -1328,6 +1364,44 @@ window.QuickCalNotes = (function () {
   // The arrows of the backup button: down into the tray (back up) and up out of it (restore)
   var BACKUP_SVG = '<svg viewBox="0 0 24 24"><path d="M4 14v5.5h16V14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M12 3.5v11m-4.5-4.5 4.5 4.5 4.5-4.5" fill="none" stroke="#143275" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
   var RESTORE_SVG = '<svg viewBox="0 0 24 24"><path d="M4 14v5.5h16V14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M12 15V4m-4.5 4.5L12 4l4.5 4.5" fill="none" stroke="#2e9e5b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  function fillKeepMenu() {
+    var m = tools.keepMenu;
+    m.innerHTML = '';
+    m.appendChild(el('div', 'ncTitle', T('Keep notes', 'Ta vare på notater')));
+    var line = el('label', 'kmLine');
+    var input = el('input', 'kmWeeks'); input.type = 'number'; input.min = 0; input.max = KEEP_MAX; input.step = 1; input.value = keepWeeks;
+    line.appendChild(input);
+    line.appendChild(el('span', '', T(' weeks back', ' uker bakover')));
+    var ok = el('button', 'btn inline kmSave', T('Save', 'Lagre'));
+    line.appendChild(ok);
+    m.appendChild(line);
+    var info = el('div', 'kmInfo');
+    m.appendChild(info);
+    function weeks() { return cleanWeeks(input.value === '' ? keepWeeks : input.value); }
+    function showInfo() {
+      var from = parseKey(oldestKept(weeks()));
+      info.textContent = T('Notes that ended before ' + from.toLocaleDateString(lang(), { weekday: 'short', day: 'numeric', month: 'short' }) + ' are deleted. 0 = keep this week only. Standard: 12.',
+                           'Notater som sluttet før ' + from.toLocaleDateString(lang(), { weekday: 'short', day: 'numeric', month: 'short' }) + ' slettes. 0 = bare denne uken. Standard: 12.');
+    }
+    function apply() {
+      var w = weeks();
+      if (w === keepWeeks) { m.classList.add('hidden'); return; }
+      var limit = oldestKept(w);
+      getAll().then(function (all) {
+        var gone = all.filter(function (n) { return expired(n, limit); }).length;
+        if (gone && !confirm(T(gone + (gone === 1 ? ' note is' : ' notes are') + ' older than that and will be deleted now. This cannot be undone.',
+                               gone + (gone === 1 ? ' notat er' : ' notater er') + ' eldre enn det og slettes nå. Dette kan ikke angres.') +
+                             (syncState() !== 'off' ? T(' It also applies on your other devices that sync with Dropbox.', ' Det gjelder også på de andre enhetene dine som synkroniserer med Dropbox.') : ''))) return;
+        saveKeep(w);
+        m.classList.add('hidden');
+        return removeOld().then(function () { refreshList(); });
+      });
+    }
+    input.addEventListener('input', showInfo);
+    input.addEventListener('keydown', function (e) { if (e.key === 'Enter') apply(); if (e.key === 'Escape') m.classList.add('hidden'); });
+    ok.addEventListener('click', apply);
+    showInfo();
+  }
   function fillBackupMenu() {
     var m = tools.backupMenu, last = lastBackup();
     m.innerHTML = '';
@@ -1411,8 +1485,8 @@ window.QuickCalNotes = (function () {
       var keep = valid.filter(function (n) { return !expired(n); });
       var old = valid.length - keep.length;
       if (!keep.length) {
-        alert(old ? T('All notes in the backup are older than 3 months, so none were restored.',
-                      'Alle notatene i sikkerhetskopien er eldre enn 3 måneder, så ingen ble gjenopprettet.')
+        alert(old ? T('All notes in the backup are older than ' + keepText() + ' back, so none were restored.',
+                      'Alle notatene i sikkerhetskopien er eldre enn ' + keepText() + ' bakover, så ingen ble gjenopprettet.')
                   : T('The backup has no notes.', 'Sikkerhetskopien har ingen notater.'));
         return;
       }
@@ -1437,7 +1511,7 @@ window.QuickCalNotes = (function () {
       }).then(function (all) {
         index = {}; all.forEach(remember); deps.render();
         alert(T(keep.length + ' notes restored.', keep.length + ' notater er gjenopprettet.') +
-          (old ? ' ' + T(old + ' older than 3 months were left out.', old + ' eldre enn 3 måneder ble utelatt.') : ''));
+          (old ? ' ' + T(old + ' older than ' + keepText() + ' back were left out.', old + ' eldre enn ' + keepText() + ' bakover ble utelatt.') : ''));
       });
     }).catch(function (e) { if (window.console) console.error(e); alert(bad); });
   }
@@ -1764,6 +1838,15 @@ window.QuickCalNotes = (function () {
       var rNotes = (remote && remote.notes) || {}, rDeleted = (remote && remote.deleted) || {};
       Object.keys(rDeleted).forEach(function (k) { if (!(deleted[k] >= rDeleted[k])) deleted[k] = rDeleted[k]; });
       saveMarks();
+      // How long notes are kept: the latest change wins, before anything is judged too old
+      var keepTime = 0;
+      try { keepTime = +localStorage.getItem(KEEP_TIME_KEY) || 0; } catch (e) { /* storage blocked */ }
+      if (remote && remote.keepWeeks != null && (+remote.keepUpdated || 0) > keepTime) {
+        var shorter = cleanWeeks(remote.keepWeeks) < keepWeeks;
+        saveKeep(remote.keepWeeks, true, +remote.keepUpdated);
+        keepTime = +remote.keepUpdated;
+        if (shorter) removeOld();   // set shorter on another device: the older notes go here too
+      }
       var result = {}, toPut = [], toDelete = [];
       Object.keys(local).concat(Object.keys(rNotes)).forEach(function (k) {
         if (result[k] || toDelete.indexOf(k) >= 0) return;
@@ -1816,11 +1899,11 @@ window.QuickCalNotes = (function () {
         var had = {};
         Object.keys(rNotes).forEach(function (k) { (rNotes[k].images || []).forEach(function (p) { had[p] = 1; }); });
         var file = { kind: SYNC_KIND, version: 1, notes: sorted(result), deleted: sorted(deleted),
-                     colorNames: names, namesUpdated: namesTime };
+                     colorNames: names, namesUpdated: namesTime, keepWeeks: keepWeeks, keepUpdated: keepTime };
         var json = JSON.stringify(file);
         var send = [], uses = {};
         Object.keys(result).forEach(function (k) { result[k].images.forEach(function (p) { uses[p] = 1; if (!had[p] && blobs[p] && send.indexOf(p) < 0) send.push(p); }); });
-        if (remote && json === JSON.stringify({ kind: remote.kind, version: remote.version, notes: remote.notes, deleted: remote.deleted, colorNames: remote.colorNames, namesUpdated: remote.namesUpdated }) && text) return;
+        if (remote && json === JSON.stringify({ kind: remote.kind, version: remote.version, notes: remote.notes, deleted: remote.deleted, colorNames: remote.colorNames, namesUpdated: remote.namesUpdated, keepWeeks: remote.keepWeeks, keepUpdated: remote.keepUpdated }) && text) return;
         return Promise.all(send.map(function (p) { return D.upload('/img/' + p, blobs[p], null); }))
           .then(function () { return D.upload(SYNC_FILE, new Blob([json], { type: 'application/json' }), rev); })
           .then(function () {
@@ -1874,6 +1957,7 @@ window.QuickCalNotes = (function () {
     isPeekOpen: isPeekOpen,
     fillList: fillList,
     listTools: listTools,
+    keptFor: keptFor,   // "for 12 weeks back", for the texts in app.js
     deleteAll: deleteAll,
     count: function () { return Object.keys(index).length; },
     reload: function () {   // notes may have been changed in the "Always on top" window
