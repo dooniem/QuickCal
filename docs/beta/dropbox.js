@@ -7,7 +7,7 @@ window.QuickCalDropbox = (function () {
   'use strict';
 
   // The app key from https://www.dropbox.com/developers/apps (it is not a secret). Empty: Dropbox is not set up yet.
-  var APP_KEY = '';
+  var APP_KEY = 'x35z8c3bhus4jyg';
   // The folder Dropbox gives the app, as the user sees it in their Dropbox
   var FOLDER = 'Apps/QuickCal';
 
