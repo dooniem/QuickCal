@@ -157,6 +157,8 @@ html.phone .neHint { display: none; }
   color: #fff; font: 700 10px/16px var(--font); text-align: center; }
 .neSwatch.none { background: #fff; color: #555; }
 .neSwatch.on { border-color: #fff; box-shadow: 0 0 0 2px #000; }
+/* A color the other note on the day has: greyed out and crossed */
+.neSwatch.taken { opacity: .3; cursor: not-allowed; background-image: linear-gradient(to top right, transparent calc(50% - 1px), #000 calc(50% - 1px) calc(50% + 1px), transparent calc(50% + 1px)); }
 .neBtn { background: rgba(8,8,8,.12); border: 0; border-radius: 3px; height: 26px; min-width: 32px; font-size: 15px; cursor: pointer; }
 .neBtn:hover { background: rgba(8,8,8,.22); }
 .neHint, .neInfo { color: #666; font-size: 10.5px; margin-top: 4px; }
