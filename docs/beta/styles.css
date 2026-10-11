@@ -321,6 +321,7 @@ html.noteDragging #tooltip, html.noteResizing #tooltip { display: none; }
 .dropboxBtn.dbOn::after { display: block; background: #2e9e5b; }
 .dropboxBtn.dbBusy::after { display: block; background: #0061fe; animation: dbPulse 1s ease-in-out infinite alternate; }
 .dropboxBtn.dbErr::after { display: block; background: #c0392b; }
+.dropboxBtn.dbOffline::after { display: block; background: #e8a11e; }
 @keyframes dbPulse { from { opacity: 1; } to { opacity: .25; } }
 .notesFilterMenu.backupMenu { top: auto; left: auto; right: 15px; bottom: 38px; }
 .bmRow { font-size: 12px; padding: 4px 10px 4px 6px; }
@@ -333,6 +334,3 @@ html.noteDragging #tooltip, html.noteResizing #tooltip { display: none; }
 .dbPoints { margin: 0 0 6px; padding-left: 18px; font-size: 11.5px; line-height: 1.35; }
 .dbPoints li { margin: 0 0 1px; }
 .dbActions { display: flex; align-items: center; gap: 8px; margin-left: 18px; }
-.dbCodeLink { font-size: 11px; color: #143275; }
-.dbCode { margin-top: 5px; }
-.dbCode input { font: inherit; font-size: 12px; height: 26px; width: 260px; padding: 0 6px; border: 1px solid #999; border-radius: 3px; box-sizing: border-box; }

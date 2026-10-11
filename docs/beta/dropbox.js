@@ -12,7 +12,9 @@ window.QuickCalDropbox = (function () {
   var FOLDER = 'Apps/QuickCal';
 
   var AUTH_KEY = 'quickcal-beta.dropbox';            // { refresh, access, expires, name, email }
-  var PENDING_KEY = 'quickcal-beta.dropboxPending';  // { redirect: {verifier, state, uri}, code: {verifier} } while signing in
+  var PENDING_KEY = 'quickcal-beta.dropboxPending';  // { redirect: {verifier, state, uri} } while signing in
+  var LOST_KEY = 'quickcal-beta.dropboxLost';        // set when Dropbox no longer accepts the sign-in (account deleted, access removed)
+  var TIMEOUT_MS = 60000;                            // a call that hangs longer is given up (and tried again at the next sync)
   var auth = read(AUTH_KEY);
 
   function read(k) { try { return JSON.parse(localStorage.getItem(k)) || null; } catch (e) { return null; } }
@@ -32,24 +34,17 @@ window.QuickCalDropbox = (function () {
   // Back to this page after signing in (the address must be added under Redirect URIs in the Dropbox app)
   function redirectUri() { return location.origin + location.pathname.replace(/index\.html$/, ''); }
 
-  // ---------- Sign in ----------
-  // withRedirect: Dropbox sends the user back here. Without: Dropbox shows a code to paste into QuickCal,
-  // for a phone where the sign-in opens outside the app and cannot come back to it.
-  function authorizeUrl(withRedirect) {
+  // ---------- Sign in: on Dropbox's own pages in this window, and Dropbox sends the user back here ----------
+  function connect() {
     var verifier = random(48), state = random(12);
-    var pending = read(PENDING_KEY) || {};
-    pending[withRedirect ? 'redirect' : 'code'] = { verifier: verifier, state: state, uri: withRedirect ? redirectUri() : '' };
-    write(PENDING_KEY, pending);
+    write(PENDING_KEY, { redirect: { verifier: verifier, state: state, uri: redirectUri() } });
     return crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier)).then(function (h) {
-      return 'https://www.dropbox.com/oauth2/authorize?' + query({
+      location.href = 'https://www.dropbox.com/oauth2/authorize?' + query({
         client_id: APP_KEY, response_type: 'code', token_access_type: 'offline',
-        code_challenge: b64url(h), code_challenge_method: 'S256',
-        redirect_uri: withRedirect ? redirectUri() : '', state: withRedirect ? state : ''
+        code_challenge: b64url(h), code_challenge_method: 'S256', redirect_uri: redirectUri(), state: state
       });
     });
   }
-  function connect() { return authorizeUrl(true).then(function (url) { location.href = url; }); }
-  function codeUrl() { return authorizeUrl(false); }
 
   // This page was opened by Dropbox after signing in (or after the user said no)
   function isReturn() { return /[?&](code|error)=/.test(location.search) && !!(read(PENDING_KEY) || {}).redirect; }
@@ -60,17 +55,10 @@ window.QuickCalDropbox = (function () {
     if (!r || !p.get('code') || p.get('state') !== r.state) return Promise.reject(new Error(p.get('error') || 'no code'));
     return token({ grant_type: 'authorization_code', code: p.get('code'), code_verifier: r.verifier, redirect_uri: r.uri });
   }
-  function finishCode(code) {
-    var pending = read(PENDING_KEY) || {}, c = pending.code;
-    if (!c || !code.trim()) return Promise.reject(new Error('no code'));
-    return token({ grant_type: 'authorization_code', code: code.trim(), code_verifier: c.verifier }).then(function () {
-      delete pending.code; write(PENDING_KEY, pending);
-    });
-  }
   // Signed in: keep the tokens and the name to show
   function token(params) {
     params.client_id = APP_KEY;
-    return fetch('https://api.dropboxapi.com/oauth2/token', {
+    return timed('https://api.dropboxapi.com/oauth2/token', {
       method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: query(params)
     }).then(function (r) {
       return r.json().catch(function () { return {}; }).then(function (j) {
@@ -82,6 +70,7 @@ window.QuickCalDropbox = (function () {
                name: auth && auth.name, email: auth && auth.email };
       saveAuth();
       if (params.grant_type === 'authorization_code') {
+        write(LOST_KEY, null);
         return rpc('users/get_current_account', null).then(function (a) {
           auth.name = a.name && a.name.display_name; auth.email = a.email; saveAuth();
         }, function () { /* the name is only for show */ });
@@ -93,14 +82,28 @@ window.QuickCalDropbox = (function () {
     if (!auth || !auth.refresh) return Promise.reject(signedOut());
     if (auth.access && auth.expires > Date.now() + 60000) return Promise.resolve(auth.access);
     return token({ grant_type: 'refresh_token', refresh_token: auth.refresh }).then(function () { return auth.access; }, function (e) {
-      if (e.signedOut) { auth = null; saveAuth(); throw signedOut(); }   // access removed in Dropbox
+      // Dropbox says no to the sign-in: the account is deleted, or the user removed QuickCal's access in
+      // Dropbox. Forget it and remember why, so the app can say so. The notes here are not touched.
+      if (e.signedOut) { auth = null; saveAuth(); write(LOST_KEY, { at: Date.now() }); throw signedOut(); }
       throw e;
     });
   }
   function signedOut() { var e = new Error('not connected to Dropbox'); e.signedOut = true; return e; }
   function disconnect() {
     var done = auth && auth.access ? rpc('auth/token/revoke', null).catch(function () {}) : Promise.resolve();
-    return done.then(function () { auth = null; saveAuth(); });
+    return done.then(function () { auth = null; saveAuth(); write(LOST_KEY, null); });
+  }
+  // fetch that gives up after TIMEOUT_MS, so a call that never answers cannot hold up the sync for good.
+  // A network failure (offline, Dropbox not reachable) gets offline = true.
+  function timed(url, init) {
+    var ctl = window.AbortController ? new AbortController() : null, timer = null;
+    if (ctl) { init.signal = ctl.signal; timer = setTimeout(function () { ctl.abort(); }, TIMEOUT_MS); }
+    return fetch(url, init).then(null, function (e) {   // the timer runs on while the body is read, too
+      clearTimeout(timer);
+      var err = new Error(e && e.name === 'AbortError' ? 'Dropbox did not answer' : 'no network');
+      err.offline = true;
+      throw err;
+    });
   }
 
   // ---------- Files ----------
@@ -112,7 +115,7 @@ window.QuickCalDropbox = (function () {
   function call(url, init, again) {
     return access().then(function (t) {
       init.headers.Authorization = 'Bearer ' + t;
-      return fetch(url, init);
+      return timed(url, init);
     }).then(function (r) {
       if (r.status === 401 && !again && auth) { auth.access = null; return call(url, init, true); }
       if (r.status === 409) {   // an error from the call itself, like a file that is not there
@@ -120,7 +123,7 @@ window.QuickCalDropbox = (function () {
           var e = new Error(j.error_summary || 'Dropbox error'); e.summary = j.error_summary || ''; throw e;
         });
       }
-      if (!r.ok) throw new Error('Dropbox ' + r.status);
+      if (!r.ok) { var e = new Error('Dropbox ' + r.status); e.busy = r.status === 429 || r.status >= 500; throw e; }
       return r;
     });
   }
@@ -161,8 +164,7 @@ window.QuickCalDropbox = (function () {
     account: function () { return auth ? { name: auth.name || '', email: auth.email || '' } : null; },
     folder: FOLDER,
     connect: connect,
-    codeUrl: codeUrl,
-    finishCode: finishCode,
+    lost: function () { return !auth && !!read(LOST_KEY); },   // was connected, and Dropbox stopped accepting it
     isReturn: isReturn,
     finishRedirect: finishRedirect,
     disconnect: disconnect,

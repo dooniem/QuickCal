@@ -1322,10 +1322,18 @@ window.QuickCalNotes = (function () {
     function text(t) { h.appendChild(document.createTextNode(t)); }
     var state = syncState(), synced = lastSynced();
     h.innerHTML = '';
+    if (state === 'lost') {
+      text(T('No longer connected to Dropbox', 'Ikke lenger koblet til Dropbox') + ' ');
+      h.appendChild(icon(tools.dropboxBtn));
+      text('. ' + T('The notes are safe here.', 'Notatene er trygge her.'));
+      h.classList.remove('hidden');
+      return;
+    }
     if (state !== 'off') {
       text(T('Synced with Dropbox', 'Synkes med Dropbox') + ' ');
       h.appendChild(icon(tools.dropboxBtn));
       text(state === 'busy' ? ' …'
+        : state === 'offline' ? ' ' + T('(waiting for the network)', '(venter på nett)')
         : state === 'error' ? ' ' + T('(not right now: ', '(ikke akkurat nå: ') + syncError + ')'
         : synced ? ' (' + T('last ', 'sist ') + new Date(synced).toLocaleTimeString(T('en', 'nb'), { hour: '2-digit', minute: '2-digit' }) + ')' : '');
       h.classList.remove('hidden');
@@ -1593,7 +1601,7 @@ window.QuickCalNotes = (function () {
   var deleted = {};
   try { deleted = JSON.parse(localStorage.getItem(DELETED_KEY)) || {}; } catch (e) { deleted = {}; }
   var applying = false;      // writing what came from Dropbox: not a change to send back
-  var syncTimer = null, syncing = null, syncAgain = false, syncError = '', listeners = [];
+  var syncTimer = null, syncing = null, syncAgain = false, syncError = '', offline = false, listeners = [];
   function DBX() { return window.QuickCalDropbox && window.QuickCalDropbox.connected() ? window.QuickCalDropbox : null; }
   function syncHere() { return available && !/[?&]pip(=|&|$)/.test(location.search); }   // not in the "Always on top" window
   function markDeleted(keys) {
@@ -1608,9 +1616,13 @@ window.QuickCalNotes = (function () {
     try { localStorage.setItem(DELETED_KEY, JSON.stringify(deleted)); } catch (e) { /* storage blocked */ }
   }
   function lastSynced() { try { return +localStorage.getItem(SYNCED_KEY) || 0; } catch (e) { return 0; } }
-  /** 'off' (not connected), 'busy', 'error' or 'ok' */
-  function syncState() { return !DBX() ? 'off' : syncing ? 'busy' : syncError ? 'error' : 'ok'; }
-  function tell() { showBackupHint(); listeners.forEach(function (f) { try { f(syncState(), lastSynced(), syncError); } catch (e) { /* ignore */ } }); }
+  /** 'off' (not connected), 'lost' (Dropbox stopped accepting the sign-in), 'busy', 'offline' (no network:
+      waits and syncs when it is back), 'error' (tries again by itself) or 'ok' */
+  function syncState() {
+    if (!DBX()) return window.QuickCalDropbox && window.QuickCalDropbox.lost() ? 'lost' : 'off';
+    return syncing ? 'busy' : offline ? 'offline' : syncError ? 'error' : 'ok';
+  }
+  function tell() { try { showBackupHint(); } catch (e) { /* only a hint */ } listeners.forEach(function (f) { try { f(syncState(), lastSynced(), syncError); } catch (e) { /* ignore */ } }); }
   function syncSoon(ms) {
     if (!DBX() || !syncHere()) return;
     clearTimeout(syncTimer);
@@ -1621,13 +1633,22 @@ window.QuickCalNotes = (function () {
     if (!DBX() || !syncHere()) { tell(); return Promise.resolve(); }
     if (syncing) { syncAgain = true; return syncing; }
     if (editor) { syncSoon(4000); return Promise.resolve(); }   // not while a note is open: after it closes
-    if (navigator.onLine === false) { syncError = T('No network', 'Ingen nettverk'); tell(); return Promise.resolve(); }
+    if (navigator.onLine === false) { offline = true; tell(); return Promise.resolve(); }
+    // Nothing here may stop the app: every failure ends as a state for the dot, and the next sync tries again
+    // (on the next change, when the app is shown, when the network is back, or within 5 minutes).
     syncing = syncOnce(0).then(function () {
-      syncError = '';
+      syncError = ''; offline = false;
       try { localStorage.setItem(SYNCED_KEY, String(Date.now())); } catch (e) { /* storage blocked */ }
     }, function (e) {
-      if (window.console) console.error(e);
-      syncError = e && e.signedOut ? '' : (e && e.message) || 'error';
+      if (window.console) console.warn('Dropbox sync:', e);
+      applying = false;
+      offline = !!(e && e.offline);
+      var s = (e && e.summary) || '';
+      syncError = e && e.signedOut ? ''
+        : /insufficient_space/.test(s) ? T('Dropbox is full', 'Dropbox er full')
+        : e && e.newer ? T('a newer QuickCal has synced, update this one', 'en nyere QuickCal har synket, oppdater denne')
+        : e && e.busy ? T('Dropbox is busy', 'Dropbox er opptatt')
+        : T('error', 'feil');
     }).then(function () {
       syncing = null; tell();
       if (syncAgain) { syncAgain = false; syncSoon(500); }
@@ -1660,6 +1681,23 @@ window.QuickCalNotes = (function () {
         text = t;
         try { remote = JSON.parse(t); } catch (e) { remote = null; }
         if (remote && remote.kind !== SYNC_KIND) remote = null;
+        // Written by a newer QuickCal: leave it alone rather than write it back in the old way
+        if (remote && remote.version > 1) { var e = new Error('newer sync file'); e.newer = true; throw e; }
+        if (remote) {   // only what QuickCal itself writes: a damaged file must not stop the sync or name other paths
+          var ok = {};
+          if (remote.notes && typeof remote.notes === 'object') Object.keys(remote.notes).forEach(function (k) {
+            var n = remote.notes[k];
+            if (!/^\d{4}-\d\d-\d\db?$/.test(k) || !n || typeof n !== 'object') return;
+            n.text = typeof n.text === 'string' ? n.text : '';
+            n.images = Array.isArray(n.images) ? n.images.filter(function (p) { return /^[0-9a-f]{64}\.(jpg|png)$/.test(p); }).slice(0, MAX_IMAGES) : [];
+            n.updated = +n.updated || 0;
+            if (n.color && !colorHex(n.color)) n.color = '';
+            if (!n.text.trim() && !n.images.length && !n.color && !n.repeat) return;   // nothing to keep
+            ok[k] = n;
+          });
+          remote.notes = ok;
+          if (!remote.deleted || typeof remote.deleted !== 'object') remote.deleted = {};
+        }
       });
     }).then(getAll).then(function (all) {
       return Promise.all(all.map(function (n) {
@@ -1684,7 +1722,7 @@ window.QuickCalNotes = (function () {
       // Color names: the latest change wins
       var namesTime = 0;
       try { namesTime = +localStorage.getItem(NAMES_TIME_KEY) || 0; } catch (e) { /* storage blocked */ }
-      var gotNames = remote && remote.colorNames && (remote.namesUpdated || 0) > namesTime;
+      var gotNames = remote && remote.colorNames && typeof remote.colorNames === 'object' && (+remote.namesUpdated || 0) > namesTime;
       if (gotNames) {
         names = remote.colorNames;
         try { localStorage.setItem(NAMES_TIME_KEY, String(remote.namesUpdated)); } catch (e) { /* storage blocked */ }
