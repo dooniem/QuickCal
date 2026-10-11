@@ -49,7 +49,13 @@ window.QuickCalNotes = (function () {
   var NAMES_KEY = 'quickcal-beta.noteColorNames';
   var names = {};
   try { names = JSON.parse(localStorage.getItem(NAMES_KEY)) || {}; } catch (e) { names = {}; }
-  function saveNames() { try { localStorage.setItem(NAMES_KEY, JSON.stringify(names)); } catch (e) { /* storage blocked */ } }
+  var NAMES_TIME_KEY = 'quickcal-beta.noteColorNamesUpdated';   // when they were last changed, for the Dropbox sync
+  function saveNames(fromSync) {
+    try {
+      localStorage.setItem(NAMES_KEY, JSON.stringify(names));
+      if (!fromSync) { localStorage.setItem(NAMES_TIME_KEY, String(Date.now())); syncSoon(); }
+    } catch (e) { /* storage blocked */ }
+  }
   function colorNo(id) { for (var i = 0; i < COLORS.length; i++) if (COLORS[i].id === id) return i + 1; return 0; }
   function colorDefault(id) {
     for (var i = 0; i < COLORS.length; i++) if (COLORS[i].id === id) return T(COLORS[i].en, COLORS[i].no);
@@ -88,6 +94,7 @@ window.QuickCalNotes = (function () {
     return new Promise(function (resolve, reject) {
       if (!db) { reject(new Error('notes not available')); return; }
       var t = db.transaction(STORE, mode), store = t.objectStore(STORE), result;
+      if (mode === 'readwrite' && !applying) syncSoon();   // a change here: send it to Dropbox soon
       work(store, function (r) { result = r; });
       t.oncomplete = function () { resolve(result); };
       t.onerror = t.onabort = function () { reject(t.error); };
@@ -100,7 +107,7 @@ window.QuickCalNotes = (function () {
     return tx('readonly', function (s, done) { var r = s.getAll(); r.onsuccess = function () { done(r.result || []); }; });
   }
   function putNote(n) { return tx('readwrite', function (s) { s.put(n); }); }
-  function deleteNote(k) { return tx('readwrite', function (s) { s.delete(k); }); }
+  function deleteNote(k) { markDeleted([k]); return tx('readwrite', function (s) { s.delete(k); }); }
 
   function isEmpty(n) { return !n || (!n.text.trim() && !n.color && !(n.images && n.images.length) && !n.repeat); }
   function remember(n) {
@@ -973,7 +980,9 @@ window.QuickCalNotes = (function () {
     });
   }
   function putBack(keys, recs) {
-    return tx('readwrite', function (s) { keys.forEach(function (k, i) { if (recs[i]) s.put(recs[i]); else s.delete(k); }); })
+    markDeleted(keys.filter(function (k, i) { return !recs[i]; }));
+    var now = Date.now();   // put back now: newer than the change it undoes, also on other devices
+    return tx('readwrite', function (s) { keys.forEach(function (k, i) { if (recs[i]) { recs[i].updated = now; s.put(recs[i]); } else s.delete(k); }); })
       .then(getAll).then(function (all) {
         index = {}; all.forEach(remember); rebuildCover(); deps.render();
         if (tools && tools.list.offsetParent && tools.onRestored) tools.onRestored(); else refreshList();
@@ -1038,7 +1047,7 @@ window.QuickCalNotes = (function () {
     t.search.addEventListener('input', function () { filter.q = t.search.value; refreshList(); });
     t.filterBtn.addEventListener('click', function (e) {
       e.stopPropagation();
-      t.colorsMenu.classList.add('hidden');
+      t.colorsMenu.classList.add('hidden'); t.backupMenu.classList.add('hidden');
       if (t.filterMenu.classList.contains('hidden')) { fillFilterMenu(); t.filterMenu.classList.remove('hidden'); }
       else t.filterMenu.classList.add('hidden');
     });
@@ -1050,10 +1059,16 @@ window.QuickCalNotes = (function () {
     });
     t.calBtn.addEventListener('click', function () { filter.cal = !filter.cal; refreshList(); });
     t.exportBtn.addEventListener('click', exportList);
-    t.backupBtn.title = backupTitle();
-    t.backupBtn.addEventListener('click', backup);
-    t.restoreBtn.title = T('Restore notes from a backup file', 'Gjenopprett notater fra en sikkerhetskopi');
-    t.restoreBtn.addEventListener('click', function () { if (available) t.restoreFile.click(); });
+    // One button for the backup file, with a small menu: back up or restore
+    t.backupBtn.title = T('Backup file', 'Sikkerhetskopi');
+    t.backupBtn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      t.filterMenu.classList.add('hidden'); t.colorsMenu.classList.add('hidden');
+      if (t.backupMenu.classList.contains('hidden')) { fillBackupMenu(); t.backupMenu.classList.remove('hidden'); }
+      else t.backupMenu.classList.add('hidden');
+    });
+    t.backupMenu.addEventListener('click', function (e) { e.stopPropagation(); });
+    document.addEventListener('click', function () { t.backupMenu.classList.add('hidden'); });
     t.restoreFile.addEventListener('change', function () {
       var f = t.restoreFile.files && t.restoreFile.files[0];
       t.restoreFile.value = '';
@@ -1062,7 +1077,7 @@ window.QuickCalNotes = (function () {
     // Color names: a small menu with the numbered colors and a name field for each
     t.colorsBtn.addEventListener('click', function (e) {
       e.stopPropagation();
-      t.filterMenu.classList.add('hidden');
+      t.filterMenu.classList.add('hidden'); t.backupMenu.classList.add('hidden');
       if (t.colorsMenu.classList.contains('hidden')) { fillColorsMenu(); t.colorsMenu.classList.remove('hidden'); }
       else t.colorsMenu.classList.add('hidden');
     });
@@ -1255,10 +1270,26 @@ window.QuickCalNotes = (function () {
   }
   function dataToBlob(d) { return fetch(d).then(function (r) { return r.blob(); }).catch(function () { return null; }); }
   function lastBackup() { try { return localStorage.getItem(LAST_BACKUP_KEY) || ''; } catch (e) { return ''; } }
-  function backupTitle() {
-    var last = lastBackup();
-    return T('Back up all notes to a file', 'Ta sikkerhetskopi av alle notatene til en fil') +
-      (last ? ' (' + T('last: ', 'sist: ') + deps.dayTitle(parseKey(last), true) + ')' : '');
+  // The arrows of the backup button: down into the tray (back up) and up out of it (restore)
+  var BACKUP_SVG = '<svg viewBox="0 0 24 24"><path d="M4 14v5.5h16V14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M12 3.5v11m-4.5-4.5 4.5 4.5 4.5-4.5" fill="none" stroke="#143275" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  var RESTORE_SVG = '<svg viewBox="0 0 24 24"><path d="M4 14v5.5h16V14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M12 15V4m-4.5 4.5L12 4l4.5 4.5" fill="none" stroke="#2e9e5b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  function fillBackupMenu() {
+    var m = tools.backupMenu, last = lastBackup();
+    m.innerHTML = '';
+    function row(icon, label, sub, on, fn) {
+      var r = el('button', 'nfRow bmRow');
+      r.disabled = !on;
+      var i = el('span', 'bmIcon'); i.innerHTML = icon;
+      r.appendChild(i);
+      var text = el('span', '', label);
+      if (sub) text.appendChild(el('span', 'bmSub', ' ' + sub));
+      r.appendChild(text);
+      r.addEventListener('click', function () { m.classList.add('hidden'); fn(); });
+      m.appendChild(r);
+    }
+    row(BACKUP_SVG, T('Back up to a file', 'Ta sikkerhetskopi'), last ? '(' + T('last ', 'sist ') + parseKey(last).getDate() + '.' + (parseKey(last).getMonth() + 1) + '.)' : '',
+        Object.keys(index).length > 0, backup);
+    row(RESTORE_SVG, T('Restore from a backup', 'Gjenopprett fra sikkerhetskopi'), '', available, function () { tools.restoreFile.click(); });
   }
   function backup() {
     var save = window.QuickCalXlsx.target('QuickCal-' + T('notes-backup', 'notater-sikkerhetskopi') + '-' + key(new Date()) + '.json',
@@ -1280,19 +1311,30 @@ window.QuickCalNotes = (function () {
       });
     }).then(function () {
       try { localStorage.setItem(LAST_BACKUP_KEY, key(new Date())); } catch (e) { /* storage blocked */ }
-      if (tools) { tools.backupBtn.title = backupTitle(); showBackupHint(); }
+      showBackupHint();
     }).catch(function (e) { if (window.console && !(e && e.name === 'AbortError')) console.error(e); });
   }
-  // A small reminder next to the button: notes live only in this browser
+  // A small line next to the buttons: synced with Dropbox, or a reminder that notes live only in this browser
   function showBackupHint() {
     var h = tools && tools.backupHint; if (!h) return;
-    var last = lastBackup();
-    // The arrow is a small copy of the backup button's icon (a text arrow is too thin in Segoe UI)
-    h.textContent = T('Notes are only stored here. Back up regularly with', 'Notatene lagres bare her. Ta sikkerhetskopi jevnlig med') + ' ';
-    var icon = el('span', 'bhIcon');
-    icon.innerHTML = tools.backupBtn.querySelector('svg').outerHTML;
-    h.appendChild(icon);
-    h.appendChild(document.createTextNode(last ? ' (' + T('last ', 'sist ') + parseKey(last).getDate() + '.' + (parseKey(last).getMonth() + 1) + '.)' : ''));
+    // The icons are small copies of the buttons' icons (a text arrow is too thin in Segoe UI)
+    function icon(btn) { var i = el('span', 'bhIcon'); i.innerHTML = btn.querySelector('svg').outerHTML; return i; }
+    function text(t) { h.appendChild(document.createTextNode(t)); }
+    var state = syncState(), synced = lastSynced();
+    h.innerHTML = '';
+    if (state !== 'off') {
+      text(T('Synced with Dropbox', 'Synkes med Dropbox') + ' ');
+      h.appendChild(icon(tools.dropboxBtn));
+      text(state === 'busy' ? ' …'
+        : state === 'error' ? ' ' + T('(not right now: ', '(ikke akkurat nå: ') + syncError + ')'
+        : synced ? ' (' + T('last ', 'sist ') + new Date(synced).toLocaleTimeString(T('en', 'nb'), { hour: '2-digit', minute: '2-digit' }) + ')' : '');
+      h.classList.remove('hidden');
+      return;
+    }
+    text(T('Notes are only stored here. Sync with', 'Notatene lagres bare her. Synk med') + ' ');
+    h.appendChild(icon(tools.dropboxBtn));
+    text(' ' + T('or back up with', 'eller ta sikkerhetskopi med') + ' ');
+    h.appendChild(icon(tools.backupBtn));
     h.classList.toggle('hidden', !Object.keys(index).length);
   }
   // Notes in the file replace notes that start on the same day; all other notes are kept.
@@ -1316,7 +1358,7 @@ window.QuickCalNotes = (function () {
                      'Gjenopprette ' + keep.length + ' notater fra sikkerhetskopien' + (created ? ' fra ' + created.toLocaleDateString('nb') : '') + '?\n\nNotater på samme dag blir erstattet, alle andre notater beholdes.'))) return;
       return Promise.all(keep.map(function (n) {
         return Promise.all((n.images || []).slice(0, MAX_IMAGES).map(dataToBlob)).then(function (blobs) {
-          var r = { date: n.date, text: n.text, color: colorHex(n.color) ? n.color : '', images: blobs.filter(Boolean), updated: n.updated || Date.now() };
+          var r = { date: n.date, text: n.text, color: colorHex(n.color) ? n.color : '', images: blobs.filter(Boolean), updated: Date.now() };
           if (n.endDate && n.endDate > dayOf(n.date)) r.endDate = n.endDate;
           if (n.repeat) r.repeat = n.repeat;
           return r;
@@ -1531,11 +1573,181 @@ window.QuickCalNotes = (function () {
   function deleteAll() {
     return getAll().then(function (all) {
       var recs = all.map(copyNote0), keys = all.map(function (n) { return n.date; });
+      markDeleted(keys);
       return tx('readwrite', function (s) { s.clear(); }).then(function () {
         index = {}; rebuildCover(); deps.render();
         if (recs.length) showUndo(T('All notes deleted.', 'Alle notatene er slettet.'), function () { putBack(keys, recs); });
       });
     });
+  }
+
+  // =====================================================================================
+  // Sync with Dropbox (dropbox.js). QuickCal's folder in the user's Dropbox holds notes.json (every note,
+  // with the names of its pictures) and one file per picture, named by its content, so each picture is
+  // sent only once. Each device merges note by note: the latest change wins. A deleted note leaves a
+  // mark (which and when) so the delete reaches the other devices too. The notes in this browser stay
+  // the real copy: without Dropbox, or offline, everything works as before.
+  // =====================================================================================
+  var DELETED_KEY = 'quickcal-beta.notesDeleted', SYNCED_KEY = 'quickcal-beta.notesSynced';
+  var SYNC_FILE = '/notes.json', SYNC_KIND = 'quickcal-notes-sync', KEEP_MARKS_DAYS = 120;
+  var deleted = {};
+  try { deleted = JSON.parse(localStorage.getItem(DELETED_KEY)) || {}; } catch (e) { deleted = {}; }
+  var applying = false;      // writing what came from Dropbox: not a change to send back
+  var syncTimer = null, syncing = null, syncAgain = false, syncError = '', listeners = [];
+  function DBX() { return window.QuickCalDropbox && window.QuickCalDropbox.connected() ? window.QuickCalDropbox : null; }
+  function syncHere() { return available && !/[?&]pip(=|&|$)/.test(location.search); }   // not in the "Always on top" window
+  function markDeleted(keys) {
+    if (!keys.length) return;
+    var t = Date.now();
+    keys.forEach(function (k) { deleted[k] = t; });
+    saveMarks();
+  }
+  function saveMarks() {
+    var old = Date.now() - KEEP_MARKS_DAYS * 86400000;
+    Object.keys(deleted).forEach(function (k) { if (deleted[k] < old) delete deleted[k]; });
+    try { localStorage.setItem(DELETED_KEY, JSON.stringify(deleted)); } catch (e) { /* storage blocked */ }
+  }
+  function lastSynced() { try { return +localStorage.getItem(SYNCED_KEY) || 0; } catch (e) { return 0; } }
+  /** 'off' (not connected), 'busy', 'error' or 'ok' */
+  function syncState() { return !DBX() ? 'off' : syncing ? 'busy' : syncError ? 'error' : 'ok'; }
+  function tell() { showBackupHint(); listeners.forEach(function (f) { try { f(syncState(), lastSynced(), syncError); } catch (e) { /* ignore */ } }); }
+  function syncSoon(ms) {
+    if (!DBX() || !syncHere()) return;
+    clearTimeout(syncTimer);
+    syncTimer = setTimeout(syncNow, ms == null ? 3000 : ms);
+  }
+  function syncNow() {
+    clearTimeout(syncTimer);
+    if (!DBX() || !syncHere()) { tell(); return Promise.resolve(); }
+    if (syncing) { syncAgain = true; return syncing; }
+    if (editor) { syncSoon(4000); return Promise.resolve(); }   // not while a note is open: after it closes
+    if (navigator.onLine === false) { syncError = T('No network', 'Ingen nettverk'); tell(); return Promise.resolve(); }
+    syncing = syncOnce(0).then(function () {
+      syncError = '';
+      try { localStorage.setItem(SYNCED_KEY, String(Date.now())); } catch (e) { /* storage blocked */ }
+    }, function (e) {
+      if (window.console) console.error(e);
+      syncError = e && e.signedOut ? '' : (e && e.message) || 'error';
+    }).then(function () {
+      syncing = null; tell();
+      if (syncAgain) { syncAgain = false; syncSoon(500); }
+    });
+    tell();
+    return syncing;
+  }
+
+  function hex(buf) { return Array.prototype.map.call(new Uint8Array(buf), function (b) { return ('0' + b.toString(16)).slice(-2); }).join(''); }
+  function picName(blob) {
+    return blob.arrayBuffer().then(function (b) { return crypto.subtle.digest('SHA-256', b); })
+      .then(function (h) { return hex(h) + (blob.type === 'image/png' ? '.png' : '.jpg'); });
+  }
+  // A note as it is kept in notes.json: the pictures by name
+  function shared(n, pics) {
+    var o = { text: n.text || '', color: n.color || '', images: pics, updated: n.updated || 0 };
+    if (n.endDate) o.endDate = n.endDate;
+    if (n.repeat) o.repeat = n.repeat;
+    if (n.series) o.series = n.series;
+    return o;
+  }
+  function sorted(o) { var r = {}; Object.keys(o).sort().forEach(function (k) { r[k] = o[k]; }); return r; }
+
+  function syncOnce(attempt) {
+    var D = DBX(), remote = null, rev = '', text = '', local = {}, blobs = {};
+    return D.download(SYNC_FILE).then(function (f) {
+      if (!f) return;
+      rev = f.rev;
+      return f.blob.text().then(function (t) {
+        text = t;
+        try { remote = JSON.parse(t); } catch (e) { remote = null; }
+        if (remote && remote.kind !== SYNC_KIND) remote = null;
+      });
+    }).then(getAll).then(function (all) {
+      return Promise.all(all.map(function (n) {
+        return Promise.all((n.images || []).map(function (b) {
+          return picName(b).then(function (p) { blobs[p] = b; return p; });
+        })).then(function (pics) { local[n.date] = shared(n, pics); });
+      }));
+    }).then(function () {
+      var rNotes = (remote && remote.notes) || {}, rDeleted = (remote && remote.deleted) || {};
+      Object.keys(rDeleted).forEach(function (k) { if (!(deleted[k] >= rDeleted[k])) deleted[k] = rDeleted[k]; });
+      saveMarks();
+      var result = {}, toPut = [], toDelete = [];
+      Object.keys(local).concat(Object.keys(rNotes)).forEach(function (k) {
+        if (result[k] || toDelete.indexOf(k) >= 0) return;
+        var l = local[k], r = rNotes[k];
+        var best = !l ? r : !r ? l : (r.updated || 0) > (l.updated || 0) ? r : l;
+        if ((deleted[k] || 0) > (best.updated || 0)) { if (l) toDelete.push(k); return; }
+        if (expired({ date: k, endDate: best.endDate, repeat: best.repeat })) return;   // deleted here soon anyway
+        if (best !== l) toPut.push(k);
+        result[k] = best;
+      });
+      // Color names: the latest change wins
+      var namesTime = 0;
+      try { namesTime = +localStorage.getItem(NAMES_TIME_KEY) || 0; } catch (e) { /* storage blocked */ }
+      var gotNames = remote && remote.colorNames && (remote.namesUpdated || 0) > namesTime;
+      if (gotNames) {
+        names = remote.colorNames;
+        try { localStorage.setItem(NAMES_TIME_KEY, String(remote.namesUpdated)); } catch (e) { /* storage blocked */ }
+        saveNames(true);
+        namesTime = remote.namesUpdated;
+      }
+
+      // 1. Pictures this device does not have yet, then the notes from Dropbox into this browser
+      var need = [];
+      toPut.forEach(function (k) { rNotes[k].images.forEach(function (p) { if (!blobs[p] && need.indexOf(p) < 0) need.push(p); }); });
+      return Promise.all(need.map(function (p) {
+        return D.download('/img/' + p).then(function (f) {
+          if (f) blobs[p] = new Blob([f.blob], { type: /\.png$/.test(p) ? 'image/png' : 'image/jpeg' });
+        });
+      })).then(function () {
+        if (!toPut.length && !toDelete.length) return;
+        applying = true;
+        var write = tx('readwrite', function (s) {
+          toPut.forEach(function (k) {
+            var r = rNotes[k], n = { date: k, text: r.text || '', color: r.color || '', images: (r.images || []).map(function (p) { return blobs[p]; }).filter(Boolean), updated: r.updated || 0 };
+            if (r.endDate) n.endDate = r.endDate;
+            if (r.repeat) n.repeat = r.repeat;
+            if (r.series) n.series = r.series;
+            s.put(n);
+          });
+          toDelete.forEach(function (k) { s.delete(k); });
+        });
+        applying = false;
+        return write.then(getAll).then(function (all) {
+          index = {}; all.forEach(remember); rebuildCover(); deps.render();
+          if (tools && tools.list.offsetParent) refreshList();
+        });
+      }).then(function () {
+        if (gotNames && tools && tools.list.offsetParent) refreshList();
+        // 2. Our pictures Dropbox does not have, then notes.json (only if something changed)
+        var had = {};
+        Object.keys(rNotes).forEach(function (k) { (rNotes[k].images || []).forEach(function (p) { had[p] = 1; }); });
+        var file = { kind: SYNC_KIND, version: 1, notes: sorted(result), deleted: sorted(deleted),
+                     colorNames: names, namesUpdated: namesTime };
+        var json = JSON.stringify(file);
+        var send = [], uses = {};
+        Object.keys(result).forEach(function (k) { result[k].images.forEach(function (p) { uses[p] = 1; if (!had[p] && blobs[p] && send.indexOf(p) < 0) send.push(p); }); });
+        if (remote && json === JSON.stringify({ kind: remote.kind, version: remote.version, notes: remote.notes, deleted: remote.deleted, colorNames: remote.colorNames, namesUpdated: remote.namesUpdated }) && text) return;
+        return Promise.all(send.map(function (p) { return D.upload('/img/' + p, blobs[p], null); }))
+          .then(function () { return D.upload(SYNC_FILE, new Blob([json], { type: 'application/json' }), rev); })
+          .then(function () {
+            // Pictures no note uses any more
+            return Promise.all(Object.keys(had).filter(function (p) { return !uses[p]; }).map(function (p) { return D.remove('/img/' + p); }));
+          });
+      });
+    }).catch(function (e) {
+      applying = false;
+      // Another device wrote notes.json in between: start over with its version
+      if (/conflict/.test((e && e.summary) || '') && attempt < 2) return syncOnce(attempt + 1);
+      throw e;
+    });
+  }
+  function startSync() {
+    if (!syncHere()) return;
+    document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible') syncSoon(0); });
+    window.addEventListener('online', function () { syncSoon(0); });
+    setInterval(function () { if (document.visibilityState === 'visible') syncSoon(0); }, 5 * 60000);
+    syncSoon(0);
   }
 
   // =====================================================================================
@@ -1550,6 +1762,7 @@ window.QuickCalNotes = (function () {
     }).then(function (all) {
       all.forEach(remember);
       deps.render();
+      startSync();
       return removeOld();
     }).catch(function () { available = false; });
   }
@@ -1572,8 +1785,14 @@ window.QuickCalNotes = (function () {
     count: function () { return Object.keys(index).length; },
     reload: function () {   // notes may have been changed in the "Always on top" window
       if (!available) return Promise.resolve();
+      syncSoon();
       return getAll().then(function (all) { index = {}; all.forEach(remember); rebuildCover(); deps.render(); });
     },
+    // Dropbox
+    syncNow: syncNow,
+    syncState: syncState,
+    lastSynced: lastSynced,
+    onSync: function (f) { listeners.push(f); },
     invalidate: invalidate,
     removeOld: function () { return available ? removeOld() : Promise.resolve(); }
   };

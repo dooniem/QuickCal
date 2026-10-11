@@ -250,7 +250,7 @@ html.pipActive #stage { visibility: hidden; }
 .ncTitle { font-size: 11px; font-weight: 600; }
 .ncRow { display: flex; align-items: center; gap: 6px; }
 .ncRow input { width: 150px; font: inherit; font-size: 11.5px; height: 18px; padding: 0 4px; border: 1px solid #999; border-radius: 3px; box-sizing: border-box; }
-.btn.exportBtn.backupBtn { right: 105px; }
+.btn.exportBtn.backupBtn { right: 60px; }
 /* Beta: picture filter, three steps: all (grey), with pictures (in color), without (struck through) */
 .notesPicsBtn { color: #777; }
 .notesPicsBtn .npHill, .notesPicsBtn .npSun { fill: #aaa; }
@@ -265,7 +265,6 @@ html.pipActive #stage { visibility: hidden; }
 .notesCalBtn.active .ncDay2 { fill: none; }
 /* The calendar is filtered: the notes button gets a blue ring, so it is easy to see why notes are missing */
 html.notesFiltered .linkBox.notesBtn { box-shadow: 0 0 0 2px #143275; }
-.btn.exportBtn.restoreBtn { right: 60px; }
 /* Beta: repeating notes */
 .neBtn.on { background: #dbe8ff; box-shadow: inset 0 0 0 1px #143275; }
 .neRepeat { margin-top: 5px; padding: 4px 5px; border: 1px solid #ccc; border-radius: 3px; background: #f7f7f7; font-size: 11.5px; display: flex; flex-direction: column; gap: 3px; }
@@ -316,3 +315,24 @@ html.noteDragging #tooltip, html.noteResizing #tooltip { display: none; }
 .nsText { flex: 1 1 100%; color: #143275; }
 .nsBtn { font: inherit; font-size: 11px; height: 20px; padding: 0 6px; border: 1px solid #8fa5d6; border-radius: 3px; background: #fff; cursor: pointer; }
 .nsBtn:hover { background: #dbe8ff; }
+/* Beta: Dropbox sync, and one button for the backup file with a small menu */
+.btn.exportBtn.dropboxBtn { right: 105px; }
+.dropboxBtn::after { content: ''; position: absolute; right: 3px; top: 3px; width: 7px; height: 7px; border-radius: 50%; display: none; box-shadow: 0 0 0 1.5px #fff; }
+.dropboxBtn.dbOn::after { display: block; background: #2e9e5b; }
+.dropboxBtn.dbBusy::after { display: block; background: #0061fe; animation: dbPulse 1s ease-in-out infinite alternate; }
+.dropboxBtn.dbErr::after { display: block; background: #c0392b; }
+@keyframes dbPulse { from { opacity: 1; } to { opacity: .25; } }
+.notesFilterMenu.backupMenu { top: auto; left: auto; right: 15px; bottom: 38px; }
+.bmRow { font-size: 12px; padding: 4px 10px 4px 6px; }
+.nfRow.bmRow:first-child { border-bottom: 0; margin-bottom: 0; }
+.bmRow:disabled { opacity: .4; cursor: default; background: transparent; }
+.bmIcon svg { width: 18px; height: 18px; display: block; color: #333; }
+.bmSub { color: #666; font-size: 11px; }
+#dropboxPage h1 { display: flex; align-items: center; gap: 7px; }
+.dbLogo { width: 20px; height: 20px; flex: none; }
+.dbPoints { margin: 0 0 6px; padding-left: 18px; font-size: 11.5px; line-height: 1.35; }
+.dbPoints li { margin: 0 0 1px; }
+.dbActions { display: flex; align-items: center; gap: 8px; margin-left: 18px; }
+.dbCodeLink { font-size: 11px; color: #143275; }
+.dbCode { margin-top: 5px; }
+.dbCode input { font: inherit; font-size: 12px; height: 26px; width: 260px; padding: 0 6px; border: 1px solid #999; border-radius: 3px; box-sizing: border-box; }

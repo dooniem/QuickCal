@@ -341,7 +341,7 @@
   // =====================================================================================
 
   var $ = function (id) { return document.getElementById(id); };
-  var pages = ['monthView', 'yearView', 'settingsPage', 'installPage', 'autostartPage', 'welcomePage', 'installedPage', 'notesPage'];
+  var pages = ['monthView', 'yearView', 'settingsPage', 'installPage', 'autostartPage', 'welcomePage', 'installedPage', 'notesPage', 'dropboxPage'];
   var currentPage = 'monthView';
   var activeMonth = new Date(today().getFullYear(), today().getMonth(), 1);
   var activeYear = today().getFullYear();
@@ -959,8 +959,12 @@
     $('notesDeleteAll').classList.toggle('hidden', !any);
     $('notesTools').classList.toggle('hidden', !any);   // search and color filter
     $('notesExport').classList.toggle('hidden', !any);
-    $('notesBackup').classList.toggle('hidden', !any);
-    $('notesRestore').classList.toggle('hidden', !notes(function () { return true; }, false));   // also when empty: that is when it is needed
+    // Backup and Dropbox also when there are no notes: that is when restoring or syncing them in is needed
+    var here = !!notes(function () { return true; }, false);
+    $('notesBackup').classList.toggle('hidden', !here);
+    $('notesDropbox').classList.toggle('hidden', !here);
+    showDropboxState();
+    $('notesBackupMenu').classList.add('hidden');
     $('notesFilterMenu').classList.add('hidden');
     $('notesColorsMenu').classList.add('hidden');
     showPage('notesPage');
@@ -972,6 +976,89 @@
   $('notesDeleteAll').addEventListener('click', function () {
     if (!confirm(T('Delete all notes?', 'Slette alle notater?'))) return;
     notes(function (N) { return N.deleteAll(); }, Promise.resolve()).then(openNotesPage, openNotesPage);
+  });
+
+  // ---------- Dropbox: the button in the notes list, and its page (what it does, connect, disconnect) ----------
+  var DBX = window.QuickCalDropbox;
+  // A small dot on the button: green when connected, blue while syncing, red when the last sync failed
+  function showDropboxState() {
+    var state = notes(function (N) { return N.syncState(); }, 'off'), b = $('notesDropbox');
+    b.classList.toggle('dbOn', state === 'ok');
+    b.classList.toggle('dbBusy', state === 'busy');
+    b.classList.toggle('dbErr', state === 'error');
+    b.title = state === 'off' ? T('Sync notes with Dropbox', 'Synk notater med Dropbox') : T('Synced with Dropbox', 'Synkes med Dropbox');
+    if (currentPage === 'dropboxPage') fillDropboxPage();
+  }
+  function fillDropboxPage() {
+    var on = DBX.connected(), state = notes(function (N) { return N.syncState(); }, 'off');
+    $('dropboxTitle').textContent = T('Sync notes with Dropbox', 'Synk notater med Dropbox');
+    var points = $('dropboxPoints');
+    points.innerHTML = '';
+    function point(bold, text) { var li = el('li'); li.appendChild(el('b', '', bold + ' ')); li.appendChild(document.createTextNode(text)); points.appendChild(li); }
+    if (!on) {
+      $('dropboxIntro').textContent = T(
+        'Use QuickCal on your PC and your phone? Dropbox keeps the notes the same on all of them, and keeps a safe copy if a device is lost. No backups by hand.',
+        'Bruker du QuickCal på PC og mobil? Dropbox holder notatene like på alle enhetene, og tar vare på en sikker kopi hvis en enhet blir borte. Du slipper å ta sikkerhetskopi selv.');
+      point(T('Free.', 'Gratis.'), T('No Dropbox account? You make a free one (Dropbox Basic) when you connect.', 'Har du ikke Dropbox, lager du en gratis konto (Dropbox Basic) når du kobler til.'));
+      point(T('Private.', 'Privat.'), T('The notes are kept in your own Dropbox, in the folder ' + DBX.folder + '. QuickCal sees nothing else there, and has no server of its own.',
+                                         'Notatene lagres i din egen Dropbox, i mappen ' + DBX.folder + '. QuickCal ser ingenting annet der og har ingen egen server.'));
+      point(T('Once.', 'Én gang.'), T('Sign in once on each device. After that it syncs by itself.', 'Du logger inn én gang på hver enhet. Etterpå synker det av seg selv.'));
+    } else {
+      var a = DBX.account() || {};
+      $('dropboxIntro').textContent = T('Connected to Dropbox', 'Koblet til Dropbox') + (a.name ? ' ' + T('as', 'som') + ' ' + a.name + (a.email ? ' (' + a.email + ')' : '') : '') + '. ' +
+        T('Notes sync by themselves on every device that is connected.', 'Notatene synkes av seg selv på alle enheter som er koblet til.');
+      var last = notes(function (N) { return N.lastSynced(); }, 0);
+      point(T('Status:', 'Status:'), state === 'busy' ? T('syncing …', 'synker …')
+        : state === 'error' ? T('could not sync just now. QuickCal tries again by itself.', 'fikk ikke synket akkurat nå. QuickCal prøver igjen av seg selv.')
+        : last ? T('last synced ', 'sist synket ') + dayTitle(new Date(last), true) + ' ' + new Date(last).toLocaleTimeString(T('en', 'nb'), { hour: '2-digit', minute: '2-digit' }) + '.'
+        : T('not synced yet.', 'ikke synket ennå.'));
+      point(T('Other devices:', 'Andre enheter:'), T('open QuickCal there and connect to the same Dropbox account.', 'åpne QuickCal der og koble til den samme Dropbox-kontoen.'));
+    }
+    $('dropboxConnect').classList.toggle('hidden', on);
+    $('dropboxConnect').textContent = T('Connect to Dropbox', 'Koble til Dropbox');
+    $('dropboxConnect').disabled = !DBX.ready();
+    $('dropboxConnect').title = DBX.ready() ? '' : T('Dropbox is not set up in this version yet', 'Dropbox er ikke satt opp i denne versjonen ennå');
+    $('dropboxSyncNow').classList.toggle('hidden', !on);
+    $('dropboxSyncNow').textContent = T('Sync now', 'Synk nå');
+    $('dropboxSyncNow').disabled = state === 'busy';
+    $('dropboxDisconnect').classList.toggle('hidden', !on);
+    $('dropboxDisconnect').textContent = T('Disconnect', 'Koble fra');
+    // Phones: the sign-in may open outside the app and not come back. Then Dropbox shows a code to paste here.
+    $('dropboxCodeLink').classList.toggle('hidden', on || !DBX.ready());
+    $('dropboxCodeLink').textContent = T('Not sent back here? Use a code', 'Kommer du ikke tilbake hit? Bruk kode');
+    if (on) $('dropboxCodeRow').classList.add('hidden');
+    $('dropboxCode').placeholder = T('Paste the code from Dropbox', 'Lim inn koden fra Dropbox');
+  }
+  function openDropboxPage() {
+    $('dropboxCodeRow').classList.add('hidden');
+    fillDropboxPage();
+    showPage('dropboxPage');
+    // The code link opens Dropbox in a new window: its address is made now, so the click opens it at once
+    if (!DBX.connected() && DBX.ready()) DBX.codeUrl().then(function (url) { $('dropboxCodeLink').href = url; });
+  }
+  $('notesDropbox').addEventListener('click', openDropboxPage);
+  $('dropboxBack').addEventListener('click', openNotesPage);
+  $('dropboxConnect').addEventListener('click', function () {
+    if (!DBX.ready()) return;
+    this.disabled = true;
+    DBX.connect().catch(function () { $('dropboxConnect').disabled = false; });
+  });
+  $('dropboxCodeLink').addEventListener('click', function () { $('dropboxCodeRow').classList.remove('hidden'); });
+  $('dropboxCodeOk').addEventListener('click', function () {
+    var b = this;
+    b.disabled = true;
+    DBX.finishCode($('dropboxCode').value).then(function () {
+      $('dropboxCode').value = '';
+      notes(function (N) { N.syncNow(); });
+      fillDropboxPage();
+    }, function () {
+      alert(T('That code did not work. Open Dropbox with the link again and paste the new code.', 'Koden virket ikke. Åpne Dropbox med lenken på nytt og lim inn den nye koden.'));
+    }).then(function () { b.disabled = false; });
+  });
+  $('dropboxSyncNow').addEventListener('click', function () { notes(function (N) { N.syncNow(); }); });
+  $('dropboxDisconnect').addEventListener('click', function () {
+    if (!confirm(T('Disconnect from Dropbox?\n\nThe notes stay both here and in Dropbox.', 'Koble fra Dropbox?\n\nNotatene blir liggende både her og i Dropbox.'))) return;
+    DBX.disconnect().then(function () { showDropboxState(); fillDropboxPage(); });
   });
 
   function showWelcome() {
@@ -1345,7 +1432,8 @@
     notes(function (N) {
       notesStarted = true;
       N.init({ T: T, render: rerender, showDate: showDate, isLarge: isLarge, isTouch: touchOnly, dayTitle: dayTitle, isoWeek: isoWeek, isOffDay: isOffDay });
-      N.listTools({ search: $('notesSearch'), filterBtn: $('notesFilterBtn'), filterMenu: $('notesFilterMenu'), colorsBtn: $('notesColorsBtn'), colorsMenu: $('notesColorsMenu'), picsBtn: $('notesPicsBtn'), calBtn: $('notesCalBtn'), exportBtn: $('notesExport'), backupBtn: $('notesBackup'), restoreBtn: $('notesRestore'), restoreFile: $('notesRestoreFile'), backupHint: $('notesBackupHint'), onRestored: openNotesPage, list: $('notesList'), empty: $('notesEmpty') });
+      N.onSync(showDropboxState);
+      N.listTools({ search: $('notesSearch'), filterBtn: $('notesFilterBtn'), filterMenu: $('notesFilterMenu'), colorsBtn: $('notesColorsBtn'), colorsMenu: $('notesColorsMenu'), picsBtn: $('notesPicsBtn'), calBtn: $('notesCalBtn'), exportBtn: $('notesExport'), backupBtn: $('notesBackup'), backupMenu: $('notesBackupMenu'), dropboxBtn: $('notesDropbox'), restoreFile: $('notesRestoreFile'), backupHint: $('notesBackupHint'), onRestored: openNotesPage, list: $('notesList'), empty: $('notesEmpty') });
     });
   }
   startNotes();
@@ -1357,6 +1445,12 @@
       if (isCalendarPage(currentPage)) resetToToday();
     }
   };
+
+  // Back from signing in to Dropbox (the app was sent there and back): finish it, sync, and show the Dropbox page
+  if (!PIP && DBX.isReturn()) {
+    DBX.finishRedirect().then(function () { notes(function (N) { N.syncNow(); }); }, function (e) { if (window.console) console.error(e); })
+      .then(function () { if (notes(function () { return true; }, false)) openDropboxPage(); });
+  }
 
   if (PIP) {
     document.documentElement.classList.add('pip');   // the floating window: just the calendar
