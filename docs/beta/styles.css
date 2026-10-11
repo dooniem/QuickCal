@@ -202,6 +202,8 @@ html.touch .linkBox.notesBtn::after { content: ''; position: absolute; inset: -1
 #notesPage .btn.inline { margin-left: 0; }
 /* Beta: "Always on top" (pip.js) */
 .linkBox.pipBtn { padding: 0 14px; }
+.linkBox.iconOnly { padding: 0 14px; }
+.linkBox.iconOnly .t-settings { display: none; }
 html.pip .notesBtn, html.pip #settingsBtn1 { display: none; }
 .linkBox.pipBtn.pipOn { background: #90ee90; }   /* LightGreen, as in the Windows app when "Always on top" is on */
 .linkBox.pipBtn.pipOn:hover { background: #7ddc7d; }
