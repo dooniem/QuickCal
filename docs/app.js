@@ -327,8 +327,12 @@
   }
   // Full screen height counts as large too: a window snapped to one half of the screen (Win+←/→,
   // or one side of an ultrawide screen) shows the whole year, like a maximized one
+  // Phones and tablets: held upright = the whole year, turned sideways = 3 months.
   function isLarge() {
     if (PIP) return false;
+    // (touchOnly() written out: this runs once before touchOnly's media queries are set up)
+    var touch = window.matchMedia && matchMedia('(hover: none) and (pointer: coarse)').matches && !matchMedia('(any-pointer: fine)').matches;
+    if (touch) return window.innerHeight > window.innerWidth;
     return isMaximized() || window.outerHeight >= screen.availHeight - 16;
   }
   function isCalendarPage(id) { return id === 'monthView' || id === 'yearView'; }
@@ -369,7 +373,7 @@
         Array.prototype.forEach.call(box.parentElement.querySelectorAll('.linkBox'), function (b) { if (b.offsetWidth) buttons += b.offsetWidth + 4; });
         width = colWidth * 2 + 8 - (buttons || 79) - 6;
       }
-      var keys = e.querySelectorAll('.spaceKey').length * 3 + e.querySelectorAll('.arrowKey').length * 1.4;
+      var keys = e.querySelectorAll('.spaceKey').length * 3 + e.querySelectorAll('.arrowKey').length * 1.4 + e.querySelectorAll('.rotateIcon').length * 1.4;
       var text = e.textContent + new Array(Math.ceil(keys) + 1).join('\u2003');   // room for the keys
       var size = Math.min(10.5, fitSize(text, width - 10, 18) * spare);
       e.style.fontSize = size + 'px';
@@ -553,6 +557,10 @@
 
   // ---------- Window behaviour ----------
   var wasMaximized = isLarge();   // maximized or full height
+  // Turning a phone or tablet: some browsers give the new size a moment after the turn, so look again then
+  window.addEventListener('orientationchange', function () {
+    setTimeout(function () { window.dispatchEvent(new Event('resize')); }, 350);
+  });
   var appSizeReady = false, saveSizeTimer = null;
   window.addEventListener('resize', function () {
     closePopups();
@@ -982,6 +990,12 @@
     if (touchOnly()) {
       $('infoText').textContent = T('Swipe ← → for month, ↓ for today', 'Sveip ← → for ny måned, ↓ for i dag');
       $('yearInfoText').textContent = T('Swipe ← → to change year, ↓ for this year', 'Sveip ← → for å bytte år, ↓ for i år');
+      // The year shows when the device is upright: say that turning it gives the small calendar
+      var turn = el('span', 'rotateIcon');
+      turn.innerHTML = '<svg viewBox="0 0 24 24"><rect x="9" y="2.5" width="9" height="15" rx="1.6" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M3.5 12.5a9 9 0 0 0 9 8.5" fill="none" stroke="#143275" stroke-width="1.7" stroke-linecap="round"/><path d="m9.5 18.6 3 2.4-3 2.3" fill="none" stroke="#143275" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+      $('yearInfoText').appendChild(document.createTextNode(' · '));
+      $('yearInfoText').appendChild(turn);
+      $('yearInfoText').appendChild(document.createTextNode(T(' sideways: small calendar', ' liggende: liten kalender')));
     } else {
       // Minimizing only resets the date in the installed app (see visibilitychange), not in a browser tab
       setKeyHint($('infoText'), T(' month · ', ' måned · '), T(' year · ', ' år · '), isInstalled()
