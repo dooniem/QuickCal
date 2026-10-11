@@ -1367,8 +1367,8 @@ window.QuickCalNotes = (function () {
   function fillKeepMenu() {
     var m = tools.keepMenu;
     m.innerHTML = '';
-    m.appendChild(el('div', 'ncTitle', T('Keep notes', 'Ta vare på notater')));
     var line = el('label', 'kmLine');
+    line.appendChild(el('span', 'kmTitle', T('Keep notes', 'Ta vare på notater')));
     var input = el('input', 'kmWeeks'); input.type = 'number'; input.min = 0; input.max = KEEP_MAX; input.step = 1; input.value = keepWeeks;
     line.appendChild(input);
     line.appendChild(el('span', '', T(' weeks back', ' uker bakover')));
@@ -1379,9 +1379,12 @@ window.QuickCalNotes = (function () {
     m.appendChild(info);
     function weeks() { return cleanWeeks(input.value === '' ? keepWeeks : input.value); }
     function showInfo() {
-      var from = parseKey(oldestKept(weeks()));
-      info.textContent = T('Notes that ended before ' + from.toLocaleDateString(lang(), { weekday: 'short', day: 'numeric', month: 'short' }) + ' are deleted. 0 = keep this week only. Standard: 12.',
-                           'Notater som sluttet før ' + from.toLocaleDateString(lang(), { weekday: 'short', day: 'numeric', month: 'short' }) + ' slettes. 0 = bare denne uken. Standard: 12.');
+      var w = weeks(), opt = { weekday: 'short', day: 'numeric', month: 'short' };
+      var from = parseKey(oldestKept(w)).toLocaleDateString(lang(), opt), monday = parseKey(oldestKept(0)).toLocaleDateString(lang(), opt);
+      info.innerHTML = '';
+      info.appendChild(el('p', 'kmMain', T('Notes older than ' + from + ' will be deleted.', 'Notater eldre enn ' + from + ' vil slettes.')));
+      info.appendChild(el('p', '', T('Weeks are counted from Monday. 0 = only this week (from ' + monday + '), 1 = also last week, and so on. Notes ahead in time and repeating notes still running are never deleted. Standard: 12.',
+                                     'Ukene telles fra mandag. 0 = bare denne uken (fra ' + monday + '), 1 = også forrige uke, og så videre. Notater frem i tid og gjentakelser som pågår, slettes aldri. Standard: 12.')));
     }
     function apply() {
       var w = weeks();
