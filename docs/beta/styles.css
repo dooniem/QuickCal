@@ -339,3 +339,7 @@ html.noteDragging #tooltip, html.noteResizing #tooltip { display: none; }
 .dbActions { display: flex; align-items: center; gap: 8px; margin-left: 18px; }
 .rotateIcon { display: inline-block; vertical-align: middle; }
 .rotateIcon svg { width: 1.35em; height: 1.35em; display: block; color: #333; }
+/* The notes list by month: a heading for each month, and a repeating note's days in that month */
+.noteMonth { font-size: 11.5px; font-weight: 600; color: #143275; padding: 8px 4px 2px; border-bottom: 1px solid #bbb; }
+.noteMonth:first-child { padding-top: 2px; }
+.noteDays { display: block; color: #555; font-size: 11px; margin-top: 1px; }

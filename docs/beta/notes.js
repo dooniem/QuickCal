@@ -1196,16 +1196,52 @@ window.QuickCalNotes = (function () {
     document.documentElement.classList.toggle('notesFiltered', !!(filter.cal && (filter.q.trim() || filter.colors.length || filter.pics)));
     showBackupHint();
     if (all && !keys.length) listEl.appendChild(el('div', 'noteNoMatch', T('No notes match.', 'Ingen notater passer.')));
+    // By month, with a heading for each. A repeating note shows once in each month it falls in, with its
+    // days there on one line. Series without an end are shown only up to the last month with an ordinary
+    // note, and at least 3 months ahead, so the list never runs on forever.
+    // The window is set from all notes, not only those that match the search, so it stays the same while searching
+    var allKeys = Object.keys(index);
+    var today = key(new Date()), monthStart = today.slice(0, 8) + '01';
+    var lo = monthStart;   // from the oldest month with a note (a series counts from its first day)
+    allKeys.forEach(function (k) { var d0 = dayOf(k).slice(0, 8) + '01'; if (d0 < lo) lo = d0; });
+    if (lo < oldestKept()) lo = oldestKept();
+    var t = new Date(), hi = key(new Date(t.getFullYear(), t.getMonth() + 4, 0));   // end of the month 3 months ahead
+    allKeys.forEach(function (k) {   // to the end of the month of the last ordinary note
+      if (index[k].repeat) return;
+      var e = parseKey(index[k].end || dayOf(k)), m = key(new Date(e.getFullYear(), e.getMonth() + 1, 0));
+      if (m > hi) hi = m;
+    });
+    var entries = [];
     keys.forEach(function (k) {
-      var n = index[k], d = parseKey(k);
+      if (!index[k].repeat) { entries.push({ k: k, day: dayOf(k), sort: k }); return; }
+      var byMonth = {};
+      occurrences(k, index[k].repeat, lo, hi).forEach(function (o) {
+        if (exc[k + '|' + o]) return;   // a day the series has a changed note of its own for
+        (byMonth[o.slice(0, 7)] = byMonth[o.slice(0, 7)] || []).push(o);
+      });
+      // A series that starts after the window still shows, in its first month
+      if (!Object.keys(byMonth).length) { var f = occurrences(k, index[k].repeat, dayOf(k), key(new Date(+parseKey(dayOf(k)) + 400 * 864e5))).filter(function (o) { return !exc[k + '|' + o]; }); if (f.length) byMonth[f[0].slice(0, 7)] = f.filter(function (o) { return o.slice(0, 7) === f[0].slice(0, 7); }); }
+      Object.keys(byMonth).forEach(function (m) { entries.push({ k: k, day: byMonth[m][0], sort: byMonth[m][0] + '~' + k, dates: byMonth[m] }); });
+    });
+    entries.sort(function (a, b) { return a.sort < b.sort ? -1 : a.sort > b.sort ? 1 : 0; });
+    var month = '';
+    entries.forEach(function (en) {
+      if (en.day.slice(0, 7) !== month) {
+        month = en.day.slice(0, 7);
+        listEl.appendChild(el('div', 'noteMonth', cap(parseKey(month + '-01').toLocaleDateString(lang(), { month: 'long', year: 'numeric' }))));
+      }
+      listEl.appendChild(noteRow(en, listEl, emptyEl));
+    });
+  }
+  function noteRow(en, listEl, emptyEl) {
+      var k = en.k, n = index[k], d = parseKey(k);
       var row = el('div', 'noteRow');
       var dot = numberDot(n.color);
       dot.title = colorLabel(n.color);
       row.appendChild(dot);
       var dateCell = el('span', 'noteDate', deps.dayTitle(d, true));
-      if (n.repeat) {
-        var nx = nextOccurrences(k, n.repeat, 1)[0];
-        dateCell.textContent = '↻ ' + (nx ? deps.dayTitle(parseKey(nx), true) : deps.dayTitle(d, true));
+      if (en.dates) {
+        dateCell.textContent = '↻ ' + deps.dayTitle(parseKey(en.dates[0]), true);
         dateCell.title = summary(k, n.repeat);
       }
       if (n.end && !n.repeat) { var e = parseKey(n.end); dateCell.appendChild(el('span', 'noteEnd', ' → ' + e.getDate() + '.' + (e.getMonth() + 1) + '.')); }
@@ -1213,6 +1249,12 @@ window.QuickCalNotes = (function () {
       var all = n.text.replace(/^\s*\n|\s+$/g, '') || (n.images ? T('(picture)', '(bilde)') : '');   // the whole note, every line
       var body = el('span', 'noteFirst', all);
       row.appendChild(body);
+      // A repeating note: its days in this month (a count when there are many)
+      if (en.dates) {
+        body.appendChild(el('span', 'noteDays', (en.dates.length > 8
+          ? summary(k, n.repeat) + ' (' + en.dates.length + ' ' + T('days', 'dager') + ')'
+          : en.dates.map(function (x) { return parseKey(x).getDate() + '.'; }).join(', '))));
+      }
       if (n.images) addThumbs(body, k);
       var tasks = n.text.match(/^[☐☑]/gm);
       // Checklist and pictures in their own column, so the bin is always in the same place at the right
@@ -1232,12 +1274,8 @@ window.QuickCalNotes = (function () {
         });
       });
       row.appendChild(rm);
-      row.addEventListener('click', function () {   // a series: its next day
-        var nx2 = n.repeat && nextOccurrences(k, n.repeat, 1)[0];
-        deps.showDate(nx2 ? parseKey(nx2) : d, k);
-      });
-      listEl.appendChild(row);
-    });
+      row.addEventListener('click', function () { deps.showDate(parseKey(en.day), k); });   // a series: its first day in this month
+      return row;
   }
 
   // Small pictures under the text, all the same size (shown only when the list fills the window, see styles.css).
