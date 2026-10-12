@@ -1,6 +1,6 @@
 // QuickCal service worker: makes the app work offline and installable.
 // Bump VERSION when you publish a new version, so users get the new files.
-const VERSION = 'quickcal-v2.0.23';
+const VERSION = 'quickcal-v2.0.24';
 const FILES = [
   './',
   './index.html',
@@ -12,7 +12,8 @@ const FILES = [
   './icons/icon-192.png',
   './icons/icon-512.png',
   './icons/icon-maskable-512.png',
-  './icons/favicon.png'
+  './icons/favicon.png',
+  './help/chrome-autostart.png'
 ];
 
 self.addEventListener('install', (event) => {

@@ -806,8 +806,8 @@
           'Starter automatisk ved enhetspålogging: QuickCal åpnes når du logger på, så ukenummeret alltid står på oppgavelinjen.')
       : T('Start automatically when you sign in: see “Start automatically” in the settings.',
           'Start automatisk når du logger på: se «Start automatisk» under innstillinger.'));
-    steps.push(T('Pin to taskbar: open the Start menu, search for QuickCal, right-click it and choose “Pin to taskbar”.',
-                 'Fest til oppgavelinjen: åpne Start-menyen, søk etter QuickCal, høyreklikk og velg «Fest til oppgavelinjen».'));
+    steps.push(T('Pin to taskbar: right-click the QuickCal icon on the desktop and choose “Pin to taskbar”.',
+                 'Fest til oppgavelinjen: høyreklikk QuickCal-ikonet på skrivebordet og velg «Fest til oppgavelinjen».'));
     setList('installedSteps', steps);
     $('installedTip').textContent = edge
       ? T('Clicked Allow too quickly? Change the choices at any time: ⋯ at the top right of this window → App settings ⚙.',
@@ -955,7 +955,7 @@
         T('Click the button below, then paste (Ctrl+V) into the address bar of a Chrome window and press Enter.',
           'Klikk knappen under, lim inn (Ctrl+V) i adressefeltet i et Chrome-vindu og trykk Enter.'),
         T('Right-click QuickCal and tick “Start app when you sign in”.',
-          'Høyreklikk QuickCal og huk av for «Start appen når du logger på» (Start app when you sign in).')]);
+          'Høyreklikk QuickCal og huk av for «Start ved oppstart».')]);
     } else {
       setList('autostartSteps', [
         T('Click the button below, then paste (Ctrl+V) into the address bar of an Edge window and press Enter.',
@@ -963,6 +963,8 @@
         T('Click … next to QuickCal and turn on “Auto-start on device login”.',
           'Klikk … ved QuickCal og slå på automatisk start ved pålogging (Auto-start on device login).')]);
     }
+    // Chrome hides the choice in a right-click menu on chrome://apps: show what it looks like
+    $('autostartPage').classList.toggle('withPic', b === 'chrome');
     $('autostartTip').textContent = viaAppMenu
       ? T('There you can also create a desktop shortcut or uninstall QuickCal.',
           'Der kan du også lage skrivebordssnarvei eller avinstallere QuickCal.')
