@@ -658,6 +658,17 @@
     fillHelpPages();
   });
 
+  // QuickCal already installed, but opened in a browser tab: the browser then offers no installation,
+  // and the icon in the address bar only moves the tab into an app window ("Open in app"). Such a window
+  // belongs to the browser on the taskbar, so pinning it pins Edge. Point to the Start menu instead.
+  var installedElsewhere = false;
+  if (!isInstalled() && navigator.getInstalledRelatedApps) {
+    navigator.getInstalledRelatedApps().then(function (apps) {
+      installedElsewhere = apps.some(function (a) { return a.platform === 'webapp'; });
+      if (installedElsewhere) fillHelpPages();
+    }).catch(function () {});
+  }
+
   function runInstall() {
     if (!installPrompt) { openSubPage('installPage'); return; }
     installPrompt.prompt();
@@ -749,7 +760,10 @@
     updateBadge(true);
     showCalendar();
   });
-  $('installPageBtn').addEventListener('click', function () { openSubPage('installPage'); });
+  // Same as Install on the welcome screen: when the browser offers installation, go straight to it
+  $('installPageBtn').addEventListener('click', function () {
+    if (installPrompt && !isInstalled()) runInstall(); else openSubPage('installPage');
+  });
   $('autostartPageBtn').addEventListener('click', function () { openSubPage('autostartPage'); });
   $('installNowBtn').addEventListener('click', runInstall);
   $('copyAppsBtn').addEventListener('click', function () {
@@ -816,8 +830,8 @@
     var b = browserKind();
 
     // Install page (becomes the uninstall page when QuickCal runs as an installed app)
-    var pin = T('Right-click the QuickCal icon on the taskbar and choose “Pin to taskbar”. The week number is shown on the icon.',
-      'Høyreklikk QuickCal-ikonet på oppgavelinjen og velg «Fest til oppgavelinjen». Ukenummeret vises på ikonet.');
+    var pin = T('Pin it: open the Start menu, search for QuickCal, right-click it and choose “Pin to taskbar”. The week number is shown on the icon.',
+      'Fest den: åpne Start-menyen, søk etter QuickCal, høyreklikk og velg «Fest til oppgavelinjen». Ukenummeret vises på ikonet.');
     var mobile = mobileOS();
     if (mobile && isInstalled()) {
       $('installTitle').textContent = T('Remove QuickCal', 'Fjern QuickCal');
@@ -883,7 +897,15 @@
       $('installIntro').textContent = T(
         'As an app, QuickCal gets its own window, works offline and shows the week number on its taskbar icon.',
         'Som app får QuickCal sitt eget vindu, virker uten nett og viser ukenummeret på ikonet på oppgavelinjen.');
-      if (installPrompt) {
+      if (installedElsewhere) {
+        $('installTitle').textContent = T('QuickCal is already installed', 'QuickCal er allerede installert');
+        $('installIntro').textContent = T(
+          'QuickCal is installed on this PC, but this is a browser tab. Start the app itself:',
+          'QuickCal er installert på denne PC-en, men dette er en fane i nettleseren. Start selve appen:');
+        setList('installSteps', [
+          T('Open the Start menu, search for QuickCal and open it.', 'Åpne Start-menyen, søk etter QuickCal og åpne den.'),
+          pin]);
+      } else if (installPrompt) {
         // The browser offers installation: the button below is all that is needed
         setList('installSteps', [
           T('Click “Install QuickCal now” below and confirm with Install. QuickCal opens in its own window.',
