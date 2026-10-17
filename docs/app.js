@@ -10,11 +10,21 @@
 
   var STORAGE_KEY = 'quickcal.settings';
 
+  // Notes (notes.js) are optional: every call goes through here, so an error there cannot break the calendar
+  // Notes are only offered in the installed app, where they belong (its own window, kept across restarts).
   // "Always on top" (pip.js) shows this page in a small floating window, opened with ?pip
+  // (?pip=notes from the installed app, so notes work there too).
   var PIP = /[?&]pip(=|&|$)/.test(location.search);
+  var PIP_NOTES = /[?&]pip=notes(&|$)/.test(location.search);
+  function notesHere() { return isInstalled() || PIP_NOTES; }
+  function notes(fn, fallback) {
+    try { if (window.QuickCalNotes && notesHere() && settings.notesEnabled !== false) return fn(window.QuickCalNotes); } catch (e) { if (window.console) console.error(e); }
+    return fallback;
+  }
   var DEFAULTS = {
     language: 'UseSystemLanguage', // 'English' | 'Norwegian' | 'UseSystemLanguage'
     showHolidays: true,
+    notesEnabled: false,    // Notes on/off, off until turned on in Settings. Off only hides them: saved notes are kept
     easterFullWeek: true,
     summerWeeks: 3,
     appSize: null,          // last normal window size of the installed app {w, h} (inner size)
@@ -58,7 +68,10 @@
     return false;
   }
   function T(en, no) { return norwegian() ? no : en; }
-  function cap(s) { return s ? s.charAt(0).toLocaleUpperCase(systemLang()) + s.slice(1) : s; }
+  function cap(s) {
+    if (!s) return s;
+    try { return s.charAt(0).toLocaleUpperCase(systemLang()) + s.slice(1); } catch (e) { return s.charAt(0).toUpperCase() + s.slice(1); }
+  }
 
   var EN_MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
   var NO_MONTHS = ['Januar', 'Februar', 'Mars', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Desember'];
@@ -180,8 +193,18 @@
   }
 
   var holidays = {};
+  // Work days for repeating notes ("4 work days after"): not a weekend and not a red day in the calendar
+  var offDays = {};
+  function isOffDay(d) {
+    var wd = d.getDay(), y = d.getFullYear();
+    if (wd === 0 || wd === 6) return true;
+    if (!offDays[y]) offDays[y] = holidaysForYear(y);
+    return dateKey(d) in offDays[y];
+  }
   function loadHolidays(years) {
     holidays = {};
+    offDays = {};   // settings may have changed (Easter week, summer weeks)
+    notes(function (N) { N.invalidate(); });
     if (!settings.showHolidays) return;
     years.forEach(function (y) {
       var m = holidaysForYear(y);
@@ -299,6 +322,9 @@
         cell.classList.add('gold');
         cell.dataset.tip = tx(HOLIDAY_TEXTS.birthday);
       }
+      cell.dataset.date = key;
+      cell.classList.add('pick');
+      notes(function (N) { N.decorate(cell, date); });
       container.appendChild(cell);
 
       if (col === 2 || day === 1) {
@@ -314,7 +340,7 @@
   // =====================================================================================
 
   var $ = function (id) { return document.getElementById(id); };
-  var pages = ['monthView', 'yearView', 'settingsPage', 'installPage', 'autostartPage', 'welcomePage', 'installedPage'];
+  var pages = ['monthView', 'yearView', 'settingsPage', 'installPage', 'autostartPage', 'welcomePage', 'installedPage', 'notesPage', 'dropboxPage'];
   var currentPage = 'monthView';
   var activeMonth = new Date(today().getFullYear(), today().getMonth(), 1);
   var activeYear = today().getFullYear();
@@ -346,11 +372,14 @@
 
   function showPage(id) {
     closePopups();
+    notes(function (N) { N.closePeek(); });
+    if (!isCalendarPage(id)) notes(function (N) { N.closeEditor(); });
     if (id === 'yearView') {
       var L = yearLayout();
       $(id).dataset.w = L.w;
       $(id).dataset.h = L.h;
     }
+    if (id === 'notesPage') notesLayout();
     pages.forEach(function (p) { $(p).classList.toggle('hidden', p !== id); });
     currentPage = id;
     var page = $(id), scaler = $('scaler');
@@ -363,13 +392,26 @@
   // Shrink the bottom-left hint to fit its space. On the calendar page the hint may also use the free part
   // of the middle column, left of the Settings button. Measured on the shown page, and on phones with
   // some room to spare: iPhone draws small text in the scaled page a little wider than it measures.
+  // Settings shows its name only when there is room: with the notes button and "Always on top" beside it
+  // (a PC with notes on), it is a gear the same size as the other two, so the key hint keeps its room.
+  // On phones and tablets ("Always on top" does not exist there), or with notes off, the name stays.
+  function settingsLabels() {
+    ['settingsBtn1', 'settingsBtn2'].forEach(function (id) {
+      var b = $(id), others = 0;
+      Array.prototype.forEach.call(b.parentElement.querySelectorAll('.linkBox'), function (o) { if (o !== b && !o.classList.contains('hidden')) others++; });
+      b.classList.toggle('iconOnly', others >= 2);
+      b.title = others >= 2 ? T('Settings', 'Innstillinger') : '';
+      b.setAttribute('aria-label', T('Settings', 'Innstillinger'));
+    });
+  }
   function fitInfoTexts() {
+    settingsLabels();
     var spare = touchOnly() ? 0.9 : 1;
     [$('infoText'), $('yearInfoText')].forEach(function (e) {
       var box = e.parentElement, page = $(e.closest('.page').id), colWidth = (+page.dataset.w - 16) / 3;
       var width = colWidth;
       if (box.classList.contains('wide')) {
-        var buttons = 0;   // Settings, and "Always on top" when it is shown
+        var buttons = 0;   // Settings, and the notepad button when it is shown
         Array.prototype.forEach.call(box.parentElement.querySelectorAll('.linkBox'), function (b) { if (b.offsetWidth) buttons += b.offsetWidth + 4; });
         width = colWidth * 2 + 8 - (buttons || 79) - 6;
       }
@@ -382,13 +424,49 @@
       if (w > avail) e.style.fontSize = size * avail / w + 'px';
     });
   }
+  // Buttons can come and go after the start ("Always on top" shows once pip.js knows the browser has it,
+  // notes on or off): fit the hint again whenever the buttons' row changes width
+  if (window.ResizeObserver) {
+    var refit = null;
+    var ro = new ResizeObserver(function () {
+      if (refit) return;
+      refit = requestAnimationFrame(function () { refit = null; fitInfoTexts(); });
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('.bottomRow .right .linkBox'), function (b) { ro.observe(b); });
+  }
 
+  // Notes list: fills a maximized window (like the year view), the usual small page otherwise.
+  // Phones and tablets show the year when the screen is large (isLarge), so the list fills the screen there too:
+  // at its natural size, at least 600 wide (a narrow phone shrinks it to fit), with small margins.
+  var NOTES_ZOOM = 1.25, notesZoom = NOTES_ZOOM;
+  function notesLayout() {
+    var page = $('notesPage'), full = isLarge(), touch = touchOnly();
+    page.classList.toggle('full', full);
+    if (touch) {
+      var pw = Math.max(600, window.innerWidth - 20);
+      notesZoom = Math.min(1, (window.innerWidth - 20) / pw);
+      page.dataset.w = full ? Math.round(pw) : 600;
+      // room at the top and bottom, so the rounded corners of a phone screen do not cut the buttons
+      page.dataset.h = full ? Math.round((window.innerHeight - 2 * 26) / notesZoom) : 220;
+    } else {
+      // Margins around it, more at the sides than at the top and bottom (the page is centered by rescale)
+      notesZoom = NOTES_ZOOM;
+      var W = window.innerWidth / NOTES_ZOOM, H = window.innerHeight / NOTES_ZOOM;
+      page.dataset.w = full ? Math.round(W - 2 * Math.max(40, W * 0.07)) : 600;
+      page.dataset.h = full ? Math.round(H - 2 * 24) : 220;
+    }
+    if (currentPage === 'notesPage') {
+      $('scaler').style.width = page.dataset.w + 'px';
+      $('scaler').style.height = page.dataset.h + 'px';
+    }
+  }
   function rescale() {
     var page = $(currentPage), scaler = $('scaler');
     var w = +page.dataset.w, h = +page.dataset.h;
     var s = Math.min(window.innerWidth / w, window.innerHeight / h);
     // Text pages in a maximized window: natural size, centered (not blown up)
-    if (!isCalendarPage(currentPage) && isLarge()) s = Math.min(s, 1);
+    if (!isCalendarPage(currentPage) && currentPage !== 'notesPage' && isLarge()) s = Math.min(s, 1);
+    if (currentPage === 'notesPage' && page.classList.contains('full')) s = notesZoom;   // keeps its margins
     scaler.style.transform = 'scale(' + s + ')';
     scaler.style.left = Math.max(0, (window.innerWidth - w * s) / 2) + 'px';
     scaler.style.top = Math.max(0, (window.innerHeight - h * s) / 2) + 'px';
@@ -478,15 +556,25 @@
 
   // ---------- Holiday tooltips ----------
   var tipTimer = null;
+  function cellDate(cell) {
+    var p = (cell.dataset.date || '').split('-');
+    return p.length === 3 ? new Date(+p[0], +p[1] - 1, +p[2]) : null;
+  }
   function showTip(cell) {
     var tip = $('tooltip');
-    tip.textContent = cell.dataset.tip;
+    tip.classList.remove('noteTip');
+    var d = cellDate(cell);
+    if (!(d && notes(function (N) { return N.fillTip(tip, d, cell.dataset.tip, function () { placeTip(cell); }); }, false))) tip.textContent = cell.dataset.tip;
     tip.classList.remove('hidden');
+    placeTip(cell);
+  }
+  function placeTip(cell) {
+    var tip = $('tooltip');
     var r = cell.getBoundingClientRect();
     var top = r.bottom + 4, left = r.left;
     if (top + tip.offsetHeight > window.innerHeight) top = r.top - tip.offsetHeight - 4;
     if (left + tip.offsetWidth > window.innerWidth) left = window.innerWidth - tip.offsetWidth - 4;
-    tip.style.top = top + 'px';
+    tip.style.top = Math.max(0, top) + 'px';
     tip.style.left = Math.max(0, left) + 'px';
   }
   function hideTip() { clearTimeout(tipTimer); $('tooltip').classList.add('hidden'); }
@@ -494,29 +582,122 @@
 
   var scalerEl = document.getElementById('scaler');
   scalerEl.addEventListener('mouseover', function (e) {
-    var cell = e.target.closest && e.target.closest('.cell[data-tip]');
-    if (!cell) return;
+    var cell = e.target.closest && e.target.closest('.cell[data-tip], .cell.note');
+    if (!cell || notes(function (N) { return N.isOpen(); }, false)) return;
     clearTimeout(tipTimer);
     tipTimer = setTimeout(function () { showTip(cell); }, 400);
   });
   scalerEl.addEventListener('mouseout', function (e) {
-    var cell = e.target.closest && e.target.closest('.cell[data-tip]');
+    var cell = e.target.closest && e.target.closest('.cell[data-tip], .cell.note');
     if (cell && !cell.contains(e.relatedTarget)) hideTip();
   });
+  // Click (tap) a day: a small box with the day and a "Write a note" button. Double-click opens the note
+  // at once. While a note is open, a click outside it only closes it. A tap that ends a swipe is not a click.
+  var lastSwipe = 0;
+  document.addEventListener('click', function (e) {
+    var t = e.target;
+    if (!t.closest || !document.body.contains(t) || t.closest('.noteEditor, .noteImageView, .noteHelp')) return;
+    if (notes(function (N) { return N.isOpen(); }, false)) {
+      notes(function (N) { N.closeEditor(); });
+      e.stopPropagation();
+      e.preventDefault();
+      ignoreDblClick = Date.now();
+      return;
+    }
+    if (!t.closest('.notePeek, .cell.pick')) notes(function (N) { N.closePeek(); });
+  }, true);
+  var ignoreDblClick = 0;
   scalerEl.addEventListener('click', function (e) {
-    var cell = e.target.closest && e.target.closest('.cell[data-tip]');
-    if (cell) { clearTimeout(tipTimer); showTip(cell); }
+    var cell = e.target.closest && e.target.closest('.cell.pick');
+    if (!cell || Date.now() - lastSwipe < 400) return;
+    if (!notesHere()) {   // in a browser tab: as before, a click shows the holiday name
+      if (cell.dataset.tip) { clearTimeout(tipTimer); showTip(cell); }
+      return;
+    }
+    hideTip();
+    var d = cellDate(cell);
+    if (d) notes(function (N) { N.openPeek(cell, d, cell.dataset.tip); });
   });
+  scalerEl.addEventListener('dblclick', function (e) {
+    var cell = e.target.closest && e.target.closest('.cell.pick');
+    if (!cell || !notesHere() || Date.now() - ignoreDblClick < 600) return;
+    hideTip();
+    var d = cellDate(cell);
+    if (d) notes(function (N) { N.openEditor(cell, d, cell.dataset.tip); });
+  });
+  // Touch: iOS gives no dblclick, so a double tap (or a long press) on a day opens its note here.
+  // The second tap may land on the small box the first tap opened, so it counts by position.
+  var lastTap = null, press = null;
+  function openTouched(date) {
+    var cell = document.querySelector('#' + currentPage + ' .cell.pick[data-date="' + date + '"]');
+    var d = cell && cellDate(cell);
+    if (!d) return;
+    ignoreDblClick = Date.now();
+    lastTap = null;
+    hideTip();
+    notes(function (N) { N.closePeek(); N.openEditor(cell, d, cell.dataset.tip); });
+  }
+  scalerEl.addEventListener('touchstart', function (e) {
+    clearTimeout(press && press.timer);
+    press = null;
+    if (e.touches.length !== 1 || !notesHere() || notes(function (N) { return N.isOpen(); }, false)) { lastTap = null; return; }
+    var p = e.touches[0];
+    if (lastTap && Date.now() - lastTap.t < 400 && Math.abs(p.clientX - lastTap.x) + Math.abs(p.clientY - lastTap.y) < 30) {
+      press = { x: p.clientX, y: p.clientY, date: lastTap.date, double: true };
+      return;
+    }
+    var cell = e.target.closest && e.target.closest('.cell.pick');
+    if (!cell) { lastTap = null; return; }
+    press = { x: p.clientX, y: p.clientY, date: cell.dataset.date, t: Date.now() };
+    press.timer = setTimeout(function () { press.long = true; openTouched(press.date); }, 500);
+  }, { passive: true });
+  scalerEl.addEventListener('touchmove', function (e) {
+    var p = e.touches[0];
+    if (press && p && Math.abs(p.clientX - press.x) + Math.abs(p.clientY - press.y) > 10) { clearTimeout(press.timer); press = null; lastTap = null; }
+  }, { passive: true });
+  scalerEl.addEventListener('touchend', function (e) {
+    var p = press;
+    press = null;
+    if (!p) return;
+    clearTimeout(p.timer);
+    if (p.long || p.double) {
+      e.preventDefault();   // no click after it (that would close the note again)
+      if (p.double) openTouched(p.date);
+      lastTap = null;
+      return;
+    }
+    lastTap = { x: p.x, y: p.y, date: p.date, t: Date.now() };
+  });
+  scalerEl.addEventListener('touchcancel', function () { if (press) clearTimeout(press.timer); press = null; });
   document.addEventListener('click', function (e) {
     if (!$('menu').contains(e.target) && !(e.target.closest && e.target.closest('.clickable'))) $('menu').classList.add('hidden');
   });
 
   // ---------- Keyboard: ← → month (year in year view), ↑ ↓ year, Space = today ----------
   document.addEventListener('keydown', function (e) {
+    if (notes(function (N) { return N.isOpen(); }, false)) {
+      if (e.key === 'Escape') notes(function (N) { N.closeEditor(); });
+      return;   // typing in a note: no calendar shortcuts
+    }
+    // Enter: open the note of the picked day, or of today (nothing happens when notes are off)
+    var tag0 = (e.target && e.target.tagName) || '';
+    if (e.key === 'Enter' && !e.repeat && !e.ctrlKey && !e.altKey && isCalendarPage(currentPage) && !/^(INPUT|SELECT|TEXTAREA|BUTTON)$/.test(tag0)) {
+      var opened = notes(function (N) {
+        if (N.openPicked()) return true;
+        var cell = document.querySelector('#' + currentPage + ' .cell.today');
+        var d = cell && cellDate(cell);
+        if (!d) return false;
+        hideTip();
+        N.openEditor(cell, d, cell.dataset.tip);
+        return true;
+      }, false);
+      if (opened) { e.preventDefault(); return; }
+    }
+    notes(function (N) { N.closePeek(); });
     if (e.key === 'Escape') { closePopups(); return; }
     if (e.repeat || !isCalendarPage(currentPage)) return;
     var tag = (e.target && e.target.tagName) || '';
-    if (tag === 'INPUT' || tag === 'SELECT') return;
+    if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
     var yearView = currentPage === 'yearView';
     switch (e.key) {
       case 'ArrowRight': yearView ? changeYear(1) : changeMonth(1); break;
@@ -533,7 +714,8 @@
   // ---------- Touch swipe: same as the keys. Left/right = ← →, down = Space (today) ----------
   var swipe = null;
   document.addEventListener('pointerdown', function (e) {
-    swipe = (e.pointerType === 'touch' || e.pointerType === 'pen') && e.isPrimary && isCalendarPage(currentPage)
+    var inNote = e.target.closest && e.target.closest('.noteEditor, .noteImageView, .noteHelp');
+    swipe = (e.pointerType === 'touch' || e.pointerType === 'pen') && e.isPrimary && isCalendarPage(currentPage) && !inNote
       ? { x: e.clientX, y: e.clientY, t: Date.now() } : null;
   });
   document.addEventListener('pointercancel', function () { swipe = null; });
@@ -549,6 +731,7 @@
     } else if (dy >= 40 && dy > Math.abs(dx) * 1.5) {
       resetToToday();
     } else return;
+    lastSwipe = Date.now();
     closePopups();
   });
 
@@ -557,11 +740,11 @@
 
   // ---------- Window behaviour ----------
   var wasMaximized = isLarge();   // maximized or full height
+  var appSizeReady = false, saveSizeTimer = null;
   // Turning a phone or tablet: some browsers give the new size a moment after the turn, so look again then
   window.addEventListener('orientationchange', function () {
     setTimeout(function () { window.dispatchEvent(new Event('resize')); }, 350);
   });
-  var appSizeReady = false, saveSizeTimer = null;
   window.addEventListener('resize', function () {
     closePopups();
     var max = isLarge();
@@ -582,6 +765,7 @@
       // Maximize = whole year, back to normal = 3 months with the current month in the middle
       if (isCalendarPage(currentPage)) { resetToToday(); return; }
     }
+    if (currentPage === 'notesPage') notesLayout();   // maximized: full size, back to normal: small page
     rescale();
   });
 
@@ -614,6 +798,7 @@
     var k = dateKey(t);
     if (k !== shownDay) {
       shownDay = k;
+      notes(function (N) { N.removeOld(); });
       if (currentPage === 'monthView') renderMonthView();
       else if (currentPage === 'yearView') renderYearView();
     }
@@ -705,7 +890,7 @@
   // =====================================================================================
 
   function openSubPage(id) {
-    subPageReturn = currentPage === 'welcomePage' || currentPage === 'installedPage' ? currentPage : 'settingsPage';
+    subPageReturn = currentPage === 'welcomePage' || currentPage === 'installedPage' || currentPage === 'notesPage' ? currentPage : 'settingsPage';
     fillHelpPages();
     showPage(id);
   }
@@ -731,6 +916,7 @@
   function openSettings() {
     $('languageSelect').value = settings.language;
     setCheck($('holidaysCheck'), settings.showHolidays);
+    setCheck($('notesCheck'), settings.notesEnabled !== false);
     setCheck($('easterCheck'), settings.easterFullWeek);
     $('weeksInput').value = String(settings.summerWeeks);
     updateHolidayRows();
@@ -747,12 +933,15 @@
   $('settingsBtn2').addEventListener('click', openSettings);
   $('holidaysCheck').addEventListener('click', function () { setCheck(this, !isChecked(this)); updateHolidayRows(); });
   $('easterCheck').addEventListener('click', function () { setCheck(this, !isChecked(this)); });
+  $('notesCheck').addEventListener('click', function () { setCheck(this, !isChecked(this)); });
   $('weeksInput').addEventListener('input', function () { this.value = this.value.replace(/[^0-3]/g, '').slice(0, 1); });
 
   $('settingsBack').addEventListener('click', function () {
     settings.language = $('languageSelect').value;
     settings.showHolidays = isChecked($('holidaysCheck'));
     settings.easterFullWeek = isChecked($('easterCheck'));
+    settings.notesEnabled = isChecked($('notesCheck'));
+    if (settings.notesEnabled) startNotes();   // off: notes are only hidden, nothing is deleted
     var w = parseInt($('weeksInput').value, 10);
     if (!isNaN(w)) settings.summerWeeks = Math.max(0, Math.min(3, w));
     saveSettings();
@@ -772,6 +961,166 @@
     try {
       navigator.clipboard.writeText(url).then(done, function () { prompt(T('Copy this address:', 'Kopier denne adressen:'), url); });
     } catch (e) { prompt(T('Copy this address:', 'Kopier denne adressen:'), url); }
+  });
+
+  // ---------- Notes list (Settings → Notes) ----------
+  function dayTitle(d, short) {
+    var s = d.toLocaleDateString(norwegian() ? 'nb-NO' : 'en-GB', short
+      ? { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }
+      : { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+    return cap(s);
+  }
+  function rerender() {
+    if (currentPage === 'monthView') renderMonthView();
+    else if (currentPage === 'yearView') renderYearView();
+  }
+  // From the list: show that day (the whole year when the list fills the window, else its month) and open its note
+  function showDate(d, k) {
+    var year = currentPage === 'notesPage' && $('notesPage').classList.contains('full');
+    activeMonth = new Date(d.getFullYear(), d.getMonth(), 1);
+    activeYear = d.getFullYear();
+    if (year) { showPage('yearView'); renderYearView(); }
+    else { showPage('monthView'); renderMonthView(); }
+    var cell = document.querySelector((year ? '#yearGrid' : '#m2') + ' .cell[data-date="' + dateKey(d) + '"]');
+    if (cell) notes(function (N) { N.openEditor(cell, d, cell.dataset.tip, false, k); });
+  }
+  function openNotesPage() {
+    $('notesList').innerHTML = '';
+    $('notesEmpty').classList.remove('hidden');
+    var installed = isInstalled();
+    var kept = notes(function (N) { return N.keptFor(); }, T('for 12 weeks back', 'i 12 uker bakover'));
+    $('notesEmpty').textContent = installed
+      ? T('No notes yet. Click a day in the calendar and then ✎ to write one. Notes are kept ' + kept + '.',
+          'Ingen notater ennå. Klikk på en dag i kalenderen og deretter ✎ for å skrive et. Notater tas vare på ' + kept + '.')
+      : touchOnly()
+        ? T('Write short notes on days: tap a day and then ✎. Pick a color and add pictures. Notes are kept ' + kept + ', on this device only.',
+            'Skriv korte notater på dager: trykk på en dag og deretter ✎. Velg farge og legg til bilder. Notatene tas vare på ' + kept + ', bare på denne enheten.')
+        : T('Write short notes on days: click a day and then ✎. Pick a color, paste pictures, and hover over the day to read the note. Notes are kept ' + kept + ', on this device only.',
+            'Skriv korte notater på dager: klikk på en dag og deretter ✎. Velg farge, lim inn bilder, og hold musen over dagen for å lese notatet. Notatene tas vare på ' + kept + ', bare på denne enheten.');
+    $('notesInstallInfo').classList.toggle('hidden', installed);
+    $('notesInstallBtn').classList.toggle('hidden', installed);
+    notes(function (N) { N.fillList($('notesList'), $('notesEmpty')); });
+    var any = !!notes(function (N) { return N.count(); }, 0);
+    $('notesDeleteAll').classList.toggle('hidden', !any);
+    $('notesTools').classList.toggle('hidden', !any);   // search and color filter
+    $('notesExport').classList.toggle('hidden', !any);
+    // Backup and Dropbox also when there are no notes: that is when restoring or syncing them in is needed
+    var here = !!notes(function () { return true; }, false);
+    $('notesBackup').classList.toggle('hidden', !here);
+    $('notesDropbox').classList.toggle('hidden', !here);
+    $('notesKeep').classList.toggle('hidden', !here);
+    $('notesKeepMenu').classList.add('hidden');
+    showDropboxState();
+    $('notesBackupMenu').classList.add('hidden');
+    $('notesFilterMenu').classList.add('hidden');
+    $('notesColorsMenu').classList.add('hidden');
+    showPage('notesPage');
+  }
+  // Notepad button next to Settings. Before installing, it leads to a page that explains notes.
+  ['notesBtn1', 'notesBtn2'].forEach(function (id) { $(id).addEventListener('click', openNotesPage); });
+  $('notesInstallBtn').addEventListener('click', runInstall);
+  $('notesBack').addEventListener('click', showCalendar);
+  $('notesDeleteAll').addEventListener('click', function () {
+    if (!confirm(T('Delete all notes?', 'Slette alle notater?'))) return;
+    notes(function (N) { return N.deleteAll(); }, Promise.resolve()).then(openNotesPage, openNotesPage);
+  });
+
+  // ---------- Dropbox: the button in the notes list, and its page (what it does, connect, disconnect) ----------
+  var DBX = window.QuickCalDropbox;
+  // A small dot on the button: green when synced, blue while syncing, yellow while offline (it syncs when the
+  // network is back), red when the last sync failed or Dropbox no longer accepts the sign-in
+  function showDropboxState() {
+    var state = notes(function (N) { return N.syncState(); }, 'off'), b = $('notesDropbox');
+    b.classList.toggle('dbOn', state === 'ok');
+    b.classList.toggle('dbBusy', state === 'busy');
+    b.classList.toggle('dbOffline', state === 'offline');
+    b.classList.toggle('dbErr', state === 'error' || state === 'lost');
+    b.title = state === 'off' ? T('Sync notes with Dropbox', 'Synk notater med Dropbox')
+      : state === 'lost' ? T('No longer connected to Dropbox', 'Ikke lenger koblet til Dropbox')
+      : state === 'offline' ? T('Synced with Dropbox: waiting for the network', 'Synkes med Dropbox: venter på nett')
+      : T('Synced with Dropbox', 'Synkes med Dropbox');
+    if (currentPage === 'dropboxPage') fillDropboxPage();
+  }
+  function fillDropboxPage() {
+    var on = DBX.connected(), state = notes(function (N) { return N.syncState(); }, 'off');
+    $('dropboxTitle').textContent = T('Sync notes with Dropbox', 'Synk notater med Dropbox');
+    var points = $('dropboxPoints');
+    points.innerHTML = '';
+    function point(bold, text) { var li = el('li'); li.appendChild(el('b', '', bold + ' ')); li.appendChild(document.createTextNode(text)); points.appendChild(li); }
+    if (!on && state === 'lost') {
+      $('dropboxIntro').textContent = T(
+        'QuickCal is no longer connected to Dropbox. The Dropbox account may be deleted, or QuickCal\'s access was removed in Dropbox.',
+        'QuickCal er ikke lenger koblet til Dropbox. Dropbox-kontoen kan være slettet, eller tilgangen for QuickCal er fjernet i Dropbox.');
+      point(T('Your notes are safe.', 'Notatene dine er trygge.'), T('They are still here on this device, and nothing was deleted.', 'De ligger fortsatt her på denne enheten, og ingenting er slettet.'));
+      point(T('Connect again', 'Koble til igjen'), T('to go on syncing, with the same or another Dropbox account.', 'for å fortsette synkingen, med samme eller en annen Dropbox-konto.'));
+    } else if (!on) {
+      $('dropboxIntro').textContent = T(
+        'Use QuickCal on your PC and your phone? Dropbox keeps the notes the same on all of them, and keeps a safe copy if a device is lost. No backups by hand.',
+        'Bruker du QuickCal på PC og mobil? Dropbox holder notatene like på alle enhetene, og tar vare på en sikker kopi hvis en enhet blir borte. Du slipper å ta sikkerhetskopi selv.');
+      point(T('Free.', 'Gratis.'), T('No Dropbox account? You make a free one (Dropbox Basic) when you connect.', 'Har du ikke Dropbox, lager du en gratis konto (Dropbox Basic) når du kobler til.'));
+      point(T('Private.', 'Privat.'), T('The notes are kept in your own Dropbox, in the folder ' + DBX.folder + '. QuickCal sees nothing else there, and has no server of its own.',
+                                         'Notatene lagres i din egen Dropbox, i mappen ' + DBX.folder + '. QuickCal ser ingenting annet der og har ingen egen server.'));
+      point(T('Once.', 'Én gang.'), T('Sign in once on each device. After that it syncs by itself.', 'Du logger inn én gang på hver enhet. Etterpå synker det av seg selv.'));
+    } else {
+      var a = DBX.account() || {};
+      $('dropboxIntro').textContent = T('Connected to Dropbox', 'Koblet til Dropbox') + (a.name ? ' ' + T('as', 'som') + ' ' + a.name + (a.email ? ' (' + a.email + ')' : '') : '') + '. ' +
+        T('Notes sync by themselves on every device that is connected.', 'Notatene synkes av seg selv på alle enheter som er koblet til.');
+      var last = notes(function (N) { return N.lastSynced(); }, 0);
+      point(T('Status:', 'Status:'), state === 'busy' ? T('syncing …', 'synker …')
+        : state === 'offline' ? T('no network right now. Changes are kept here and synced when the network is back.', 'ikke nett akkurat nå. Endringer tas vare på her og synkes når nettet er tilbake.')
+        : state === 'error' ? T('could not sync just now. QuickCal tries again by itself.', 'fikk ikke synket akkurat nå. QuickCal prøver igjen av seg selv.')
+        : last ? T('last synced ', 'sist synket ') + dayTitle(new Date(last), true) + ' ' + new Date(last).toLocaleTimeString(T('en', 'nb'), { hour: '2-digit', minute: '2-digit' }) + '.'
+        : T('not synced yet.', 'ikke synket ennå.'));
+      point(T('Stored in:', 'Lagres i:'), T('the folder ' + DBX.folder + ' in your Dropbox.', 'mappen ' + DBX.folder + ' i din Dropbox.'));
+      point(T('Other devices:', 'Andre enheter:'), T('open QuickCal there and connect to the same Dropbox account.', 'åpne QuickCal der og koble til den samme Dropbox-kontoen.'));
+    }
+    $('dropboxConnect').classList.toggle('hidden', on);
+    $('dropboxConnect').textContent = T('Connect to Dropbox', 'Koble til Dropbox');
+    $('dropboxConnect').disabled = !DBX.ready();
+    $('dropboxConnect').title = DBX.ready() ? '' : T('Dropbox is not set up in this version yet', 'Dropbox er ikke satt opp i denne versjonen ennå');
+    $('dropboxSyncNow').classList.toggle('hidden', !on);
+    $('dropboxSyncNow').textContent = T('Sync now', 'Synk nå');
+    $('dropboxSyncNow').disabled = state === 'busy';
+    $('dropboxDisconnect').classList.toggle('hidden', !on);
+    $('dropboxDisconnect').textContent = T('Disconnect', 'Koble fra');
+  }
+  function openDropboxPage() {
+    fillDropboxPage();
+    showPage('dropboxPage');
+  }
+  // Signing in happens on Dropbox's own pages in this window. A small window is made tall enough for them
+  // (and moved up if needed), and its own size and place come back when Dropbox sends the user back:
+  // the app starts again then and takes its saved size (startAppSizing), and placeAfterSignin moves it back.
+  var SIGNIN_PLACE_KEY = 'quickcal.dropboxSigninPlace';
+  function growForSignin() {
+    if (!isInstalled() || touchOnly() || isLarge()) return;
+    try {
+      appSizeReady = false; clearTimeout(saveSizeTimer);   // the bigger size must not be saved as the app's size
+      localStorage.setItem(SIGNIN_PLACE_KEY, JSON.stringify({ x: window.screenX, y: window.screenY }));
+      var left = screen.availLeft || 0, top = screen.availTop || 0;
+      var w = Math.min(screen.availWidth, Math.max(window.outerWidth, 560)), h = Math.min(screen.availHeight, 780);
+      window.moveTo(Math.max(left, Math.min(window.screenX, left + screen.availWidth - w)), Math.max(top, Math.min(window.screenY, top + screen.availHeight - h)));
+      window.resizeTo(w, h);
+    } catch (e) { /* not allowed in this browser: the sign-in pages scroll instead */ }
+  }
+  function placeAfterSignin() {
+    var p = null;
+    try { p = JSON.parse(localStorage.getItem(SIGNIN_PLACE_KEY)); localStorage.removeItem(SIGNIN_PLACE_KEY); } catch (e) { p = null; }
+    if (p && isInstalled() && !settings.appMaximized) [300, 900].forEach(function (ms) { setTimeout(function () { try { window.moveTo(p.x, p.y); } catch (e) { /* ignore */ } }, ms); });
+  }
+  $('notesDropbox').addEventListener('click', openDropboxPage);
+  $('dropboxBack').addEventListener('click', openNotesPage);
+  $('dropboxConnect').addEventListener('click', function () {
+    if (!DBX.ready()) return;
+    this.disabled = true;
+    growForSignin();
+    DBX.connect().catch(function () { $('dropboxConnect').disabled = false; });
+  });
+  $('dropboxSyncNow').addEventListener('click', function () { notes(function (N) { N.syncNow(); }); });
+  $('dropboxDisconnect').addEventListener('click', function () {
+    if (!confirm(T('Disconnect from Dropbox?\n\nSyncing stops on this device. The notes stay both here and in Dropbox, in the folder ' + DBX.folder + '. To remove them from Dropbox too, delete that folder in Dropbox.',
+                   'Koble fra Dropbox?\n\nSynkingen stopper på denne enheten. Notatene blir liggende både her og i Dropbox, i mappen ' + DBX.folder + '. Vil du fjerne dem fra Dropbox også, sletter du den mappen i Dropbox.'))) return;
+    DBX.disconnect().then(function () { showDropboxState(); fillDropboxPage(); });
   });
 
   function showWelcome() {
@@ -1008,8 +1357,10 @@
 
   function applyTexts() {
     document.documentElement.classList.toggle('touch', touchOnly());
+    // A phone (small touch screen): the note editor leaves out its help text, so it takes less room
+    document.documentElement.classList.toggle('phone', touchOnly() && Math.min(screen.width, screen.height) < 600);
     if (currentPage === 'yearView' && +$('yearView').dataset.w !== yearLayout().w) { showPage('yearView'); renderYearView(); }
-    [$('holidaysCheck'), $('easterCheck')].forEach(function (b) { setCheck(b, isChecked(b)); });
+    [$('holidaysCheck'), $('easterCheck'), $('notesCheck')].forEach(function (b) { setCheck(b, isChecked(b)); });
     document.documentElement.lang = norwegian() ? 'no' : 'en';
     if (touchOnly()) {
       $('infoText').textContent = T('Swipe ← → for month, ↓ for today', 'Sveip ← → for ny måned, ↓ for i dag');
@@ -1039,15 +1390,31 @@
     $('welcomeBtn').textContent = T('Getting started', 'Kom i gang');
     $('languageLabel').textContent = T('Calendar Language', 'Kalenderspråk');
     $('systemLanguageOption').textContent = T('Use system language', 'Bruk systemspråk');
+    $('notesLabel').textContent = T('Notes on days', 'Notater på dager');
     $('holidaysLabel').textContent = T('Show holidays in calendar', 'Vis helligdager i kalenderen');
     $('easterLabel').textContent = T('Show Easter as a full week off', 'Vis hele påskeuka som fri');
     $('weeksBefore').textContent = T('Show', 'Vis');
     $('weeksAfter').textContent = T('number of weeks summer vacation (0-3)', 'uker sommerferie (0–3)');
     $('autostartPageBtn').textContent = T('Start automatically', 'Start automatisk');
     $('resetSizeBtn').textContent = T('Default window size', 'Standard vindusstørrelse');
+    ['notesBtn1', 'notesBtn2'].forEach(function (id) {
+      $(id).classList.toggle('hidden', settings.notesEnabled === false);
+      $(id).title = T('Notes', 'Notater');
+      $(id).setAttribute('aria-label', $(id).title);
+    });
+    $('notesInstallInfo').textContent = mobileOS()
+      ? T('Available when QuickCal is added to the home screen.', 'Tilgjengelig når QuickCal er lagt på Hjem-skjermen.')
+      : T('Available when QuickCal is installed as an app.', 'Tilgjengelig når QuickCal er installert som app.');
+    $('notesInstallBtn').textContent = mobileOS() ? T('Show me how', 'Vis meg hvordan') : T('Install as app', 'Installer som app');
+    $('notesTitle').textContent = T('Notes', 'Notater');
+    $('notesDeleteAll').textContent = T('Delete all', 'Slett alle');
+    $('notesSearch').placeholder = T('Search notes', 'Søk i notater');
+    $('notesFilterBtn').title = T('Filter by color', 'Filtrer på farge');
+    $('notesExport').title = T('Export the list to Excel', 'Eksporter listen til Excel');
 
     $('welcomeTitle').textContent = T('Getting started with QuickCal', 'Kom i gang med QuickCal');
     $('wInstallText').textContent = T('Install QuickCal as an app', 'Installer QuickCal som app');
+    var notesLine = el('small', 'wNote', T('Notes on days are available in the installed app. Turn them on in Settings.', 'Notater på dager er tilgjengelig i den installerte appen. Skru dem på i Innstillinger.'));
     $('wBadgeText').innerHTML = '';
     $('wBadgeText').appendChild(document.createTextNode(T('Week number on the taskbar', 'Ukenummeret på oppgavelinjen')));
     $('wBadgeText').appendChild(document.createElement('br'));
@@ -1058,6 +1425,8 @@
     // Phones and tablets: "add to the home screen", and no taskbar or autostart rows
     var mobile = mobileOS();
     if (mobile) $('wInstallText').textContent = T('Add QuickCal to the home screen', 'Legg QuickCal på Hjem-skjermen');
+    $('wInstallText').appendChild(document.createElement('br'));
+    $('wInstallText').appendChild(notesLine);
     $('wBadgeText').parentNode.classList.toggle('hidden', !!mobile);
     $('wAutostartText').parentNode.classList.toggle('hidden', !!mobile);
     $('wAutostartBtn').textContent = T('Show me how', 'Vis meg hvordan');
@@ -1118,6 +1487,7 @@
     var onModeChange = function () {
       applyTexts();
       if (isInstalled()) {
+        startNotes();
         settings.appMaximized = false;
         startAppSizing();
         if (!settings.appAutostartShown) showInstalledPage();
@@ -1135,11 +1505,32 @@
   if ('launchQueue' in window) {
     try { window.launchQueue.setConsumer(function () { if (isCalendarPage(currentPage)) resetToToday(); }); } catch (e) { /* not supported */ }
   }
+  var notesStarted = false;
+  function startNotes() {
+    if (notesStarted) return;
+    notes(function (N) {
+      notesStarted = true;
+      N.init({ T: T, render: rerender, showDate: showDate, isLarge: isLarge, isTouch: touchOnly, dayTitle: dayTitle, isoWeek: isoWeek, isOffDay: isOffDay });
+      N.onSync(showDropboxState);
+      N.listTools({ search: $('notesSearch'), filterBtn: $('notesFilterBtn'), filterMenu: $('notesFilterMenu'), colorsBtn: $('notesColorsBtn'), colorsMenu: $('notesColorsMenu'), picsBtn: $('notesPicsBtn'), calBtn: $('notesCalBtn'), exportBtn: $('notesExport'), backupBtn: $('notesBackup'), backupMenu: $('notesBackupMenu'), keepBtn: $('notesKeep'), keepMenu: $('notesKeepMenu'), dropboxBtn: $('notesDropbox'), restoreFile: $('notesRestoreFile'), backupHint: $('notesBackupHint'), onRestored: openNotesPage, list: $('notesList'), empty: $('notesEmpty') });
+    });
+  }
+  startNotes();
 
   // For pip.js, which brings the calendar back here when the floating window closes
   window.QuickCalApp = {
-    refresh: function () { if (isCalendarPage(currentPage)) resetToToday(); }
+    refresh: function () {
+      notes(function (N) { N.reload(); });
+      if (isCalendarPage(currentPage)) resetToToday();
+    }
   };
+
+  // Back from signing in to Dropbox (the app was sent there and back): finish it, sync, and show the Dropbox page
+  if (!PIP && DBX.isReturn()) {
+    placeAfterSignin();
+    DBX.finishRedirect().then(function () { notes(function (N) { N.syncNow(); }); }, function (e) { if (window.console) console.error(e); })
+      .then(function () { if (notes(function () { return true; }, false)) openDropboxPage(); });
+  }
 
   if (PIP) {
     document.documentElement.classList.add('pip');   // the floating window: just the calendar

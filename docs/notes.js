@@ -1,0 +1,1982 @@
+/* QuickCal Web - notes on days.
+   Kept apart from the calendar on purpose: app.js calls in here through a few small hooks, each
+   wrapped in try/catch, so a problem with notes can never stop the calendar from working.
+   Notes live in IndexedDB in this browser only (room for pasted images), and notes older than
+   three months are deleted automatically. */
+window.QuickCalNotes = (function () {
+  'use strict';
+
+  var DB_NAME = 'quickcal-notes', STORE = 'notes';
+  // How many weeks back notes are kept (whole weeks, Monday to Sunday). 0 = only this week. The user picks it
+  // with the gear in the notes list; it goes with the notes in Dropbox, so every device keeps the same.
+  var KEEP_KEY = 'quickcal.keepWeeks', KEEP_TIME_KEY = 'quickcal.keepWeeksUpdated';
+  var KEEP_DEFAULT = 12, KEEP_MAX = 520;
+  function cleanWeeks(v) { v = Math.floor(+v); return isFinite(v) && v >= 0 ? Math.min(v, KEEP_MAX) : KEEP_DEFAULT; }
+  var keepWeeks = KEEP_DEFAULT;
+  try { var kw = localStorage.getItem(KEEP_KEY); if (kw !== null) keepWeeks = cleanWeeks(kw); } catch (e) { /* storage blocked */ }
+  function saveKeep(weeks, fromSync, time) {
+    keepWeeks = cleanWeeks(weeks);
+    try {
+      localStorage.setItem(KEEP_KEY, String(keepWeeks));
+      localStorage.setItem(KEEP_TIME_KEY, String(time || Date.now()));
+    } catch (e) { /* storage blocked */ }
+    if (!fromSync) syncSoon();
+  }
+  /** "for 12 weeks back" / "i 12 uker bakover" ("this week only" for 0) */
+  function keptFor() {
+    return keepWeeks === 0 ? T('this week only', 'bare denne uken') : T('for ' + keepText() + ' back', 'i ' + keepText() + ' bakover');
+  }
+  /** "12 weeks" / "12 uker", for the texts that say how long notes are kept */
+  function keepText() {
+    return keepWeeks === 0 ? T('this week', 'denne uken')
+      : keepWeeks === 1 ? T('1 week', '1 uke') : T(keepWeeks + ' weeks', keepWeeks + ' uker');
+  }
+  var MAX_IMAGES = 4, MAX_IMAGE_SIDE = 1600;
+
+  // Colors not used by the calendar itself (holiday red, today/week blue, birthday gold)
+  var COLORS = [
+    { id: 'maroon', hex: '#7b1e2b', en: 'Maroon', no: 'Vinrød' },
+    { id: 'orange', hex: '#e8871e', en: 'Orange', no: 'Oransje' },
+    { id: 'green', hex: '#2e9e5b', en: 'Green', no: 'Grønn' },
+    { id: 'purple', hex: '#8e44ad', en: 'Purple', no: 'Lilla' },
+    { id: 'teal', hex: '#11808a', en: 'Teal', no: 'Petrol' },
+    { id: 'brown', hex: '#8a6a4a', en: 'Brown', no: 'Brun' }
+  ];
+
+  var deps = null;          // { T, render, showDate, isTouch, dayTitle }
+  var db = null;
+  var available = false;
+  // A day holds at most two notes: one in the top half and one in the bottom half (slot 0 and 1).
+  // A note's key is the day it starts on, with a 'b' after it in the bottom half: '2026-10-14', '2026-10-14b'.
+  var index = {};           // key -> { text, color, images (count), end } for drawing the calendar
+  var covers = [{}, {}];    // per slot: every day a note covers -> its key (a note can span several days)
+  var exc = {};             // 'series key|day' for the days a series has its own changed note
+  var MAX_SPAN_DAYS = 62;
+  var BOX = /^[☐☑] ?/;      // checklist line
+  var editor = null;        // open editor state
+
+  // A drawn bin in black, like the other buttons (the 🗑 emoji is pale grey on Windows)
+  var BIN_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6.5h16M9.5 6.5V4h5v2.5M6.5 6.5l1 13.5h9l1-13.5M10 10v7m4-7v7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  function T(en, no) { return deps.T(en, no); }
+  function pad(n) { return (n < 10 ? '0' : '') + n; }
+  function key(d) { return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
+  function parseKey(k) { var p = k.slice(0, 10).split('-'); return new Date(+p[0], +p[1] - 1, +p[2]); }
+  function dayOf(k) { return k.slice(0, 10); }
+  function slotOf(k) { return k.length > 10 ? 1 : 0; }
+  function slotKey(day, slot) { return slot ? day + 'b' : day; }
+  function addDays(k, n) { var d = parseKey(k); d.setDate(d.getDate() + n); return key(d); }
+  function colorHex(id) { for (var i = 0; i < COLORS.length; i++) if (COLORS[i].id === id) return COLORS[i].hex; return null; }
+
+  // Each color has a number (no color = 0, then 1-6) and can be given a name, e.g. "Prosjekt A" or "Ferie".
+  // The names are kept in this browser (and in the backup file).
+  var NAMES_KEY = 'quickcal.noteColorNames';
+  var names = {};
+  try { names = JSON.parse(localStorage.getItem(NAMES_KEY)) || {}; } catch (e) { names = {}; }
+  var NAMES_TIME_KEY = 'quickcal.noteColorNamesUpdated';   // when they were last changed, for the Dropbox sync
+  function saveNames(fromSync) {
+    try {
+      localStorage.setItem(NAMES_KEY, JSON.stringify(names));
+      if (!fromSync) { localStorage.setItem(NAMES_TIME_KEY, String(Date.now())); syncSoon(); }
+    } catch (e) { /* storage blocked */ }
+  }
+  function colorNo(id) { for (var i = 0; i < COLORS.length; i++) if (COLORS[i].id === id) return i + 1; return 0; }
+  function colorDefault(id) {
+    for (var i = 0; i < COLORS.length; i++) if (COLORS[i].id === id) return T(COLORS[i].en, COLORS[i].no);
+    return T('No color', 'Uten farge');
+  }
+  function colorLabel(id) { return (names[id || 'none'] || '').trim() || colorDefault(id); }
+  // A round color dot with its number inside
+  function numberDot(id, cls) {
+    var dot = el('span', cls || 'noteDot', String(colorNo(id)));
+    var hex = colorHex(id);
+    if (hex) dot.style.background = hex; else dot.classList.add('plain');
+    return dot;
+  }
+  function el(tag, cls, text) {
+    var e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text != null) e.textContent = text;
+    return e;
+  }
+  // The first day kept: Monday of this week, keepWeeks weeks back. Notes that ended before it are deleted.
+  function oldestKept(weeks) {
+    if (weeks == null) weeks = keepWeeks;
+    var t = new Date(), monday = new Date(t.getFullYear(), t.getMonth(), t.getDate() - (t.getDay() + 6) % 7);
+    return key(new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() - 7 * weeks));
+  }
+
+  // ---------- Storage (IndexedDB) ----------
+  function openDb() {
+    return new Promise(function (resolve, reject) {
+      if (!window.indexedDB) { reject(new Error('no IndexedDB')); return; }
+      var req = indexedDB.open(DB_NAME, 1);
+      req.onupgradeneeded = function () { req.result.createObjectStore(STORE, { keyPath: 'date' }); };
+      req.onsuccess = function () { resolve(req.result); };
+      req.onerror = function () { reject(req.error); };
+      req.onblocked = function () { reject(new Error('blocked')); };
+    });
+  }
+  function tx(mode, work) {
+    return new Promise(function (resolve, reject) {
+      if (!db) { reject(new Error('notes not available')); return; }
+      var t = db.transaction(STORE, mode), store = t.objectStore(STORE), result;
+      if (mode === 'readwrite' && !applying) syncSoon();   // a change here: send it to Dropbox soon
+      work(store, function (r) { result = r; });
+      t.oncomplete = function () { resolve(result); };
+      t.onerror = t.onabort = function () { reject(t.error); };
+    });
+  }
+  function getNote(k) {
+    return tx('readonly', function (s, done) { var r = s.get(k); r.onsuccess = function () { done(r.result || null); }; });
+  }
+  function getAll() {
+    return tx('readonly', function (s, done) { var r = s.getAll(); r.onsuccess = function () { done(r.result || []); }; });
+  }
+  function putNote(n) { return tx('readwrite', function (s) { s.put(n); }); }
+  function deleteNote(k) { markDeleted([k]); return tx('readwrite', function (s) { s.delete(k); }); }
+
+  function isEmpty(n) { return !n || (!n.text.trim() && !n.color && !(n.images && n.images.length) && !n.repeat); }
+  function remember(n) {
+    if (isEmpty(n)) delete index[n.date];
+    else index[n.date] = { text: n.text, color: n.color, images: (n.images || []).length, end: n.endDate && n.endDate > dayOf(n.date) ? n.endDate : '', repeat: n.repeat || null, series: n.series || '' };
+    rebuildCover();
+  }
+  // Multi-day notes: which note covers each day, in each half
+  function rebuildCover() {
+    covers = [{}, {}];
+    exc = {};
+    recurByYear = {};
+    Object.keys(index).sort().forEach(function (k) {
+      if (index[k].repeat) return;   // repeating notes: see notesAt() below
+      var sl = slotOf(k), d = dayOf(k), end = index[k].end || d;
+      for (var i = 0; i < MAX_SPAN_DAYS && d <= end; i++, d = addDays(d, 1)) {
+        if (!covers[sl][d]) covers[sl][d] = k;
+        if (index[k].series) exc[index[k].series + '|' + d] = 1;
+      }
+    });
+  }
+  /** The notes shown on a day: [top, bottom], each null or { k: its key, s/e: first/last day of this showing, slot }.
+      Notes stored in a half keep it; a repeating note takes a free half. */
+  function notesAt(dk) {
+    var out = [null, null], recs = (recurMap(dk.slice(0, 4))[dk] || []).slice();
+    for (var sl = 0; sl < 2; sl++) {
+      var k = covers[sl][dk];
+      if (k) out[sl] = { k: k, s: dayOf(k), e: index[k].end || dayOf(k), slot: sl };
+    }
+    for (sl = 0; sl < 2; sl++) if (!out[sl] && recs.length) { var r = recs.shift(); out[sl] = { k: r.k, s: r.s, e: r.e, slot: sl }; }
+    return out;
+  }
+  function listAt(dk) { return notesAt(dk).filter(Boolean); }
+  // What the calendar shows: with the list's search and filter turned on for the calendar (the calendar
+  // button in the notes list), only the notes that match. The others still take their place on the day.
+  function shownAt(dk) { return notesAt(dk).map(function (a) { return a && (!filter.cal || matches(a.k)) ? a : null; }); }
+  function shownList(dk) { return shownAt(dk).filter(Boolean); }
+  // Room for a note (self = its key when it is already stored) on days s..e in half sl
+  function fits(s, e, sl, self) {
+    var k2 = slotKey(s, sl);
+    if (index[k2] && k2 !== self) return false;
+    for (var d = s; d <= e; d = addDays(d, 1)) {
+      var c = covers[sl][d];
+      if (c && c !== self) return false;
+      if (listAt(d).filter(function (a) { return a.k !== self; }).length >= 2) return false;
+    }
+    return true;
+  }
+  // A free half for days s..e (the preferred one first), or -1 when both are taken
+  function freeSlot(s, e, self, prefer) {
+    var order = prefer === 1 ? [1, 0] : [0, 1];
+    for (var i = 0; i < 2; i++) if (fits(s, e, order[i], self)) return order[i];
+    return -1;
+  }
+  // Last day a note with key k may run to: not into another note, and not longer than MAX_SPAN_DAYS
+  function maxEnd(k) {
+    var s = dayOf(k), sl = slotOf(k), e = s;
+    for (var i = 1; i < MAX_SPAN_DAYS; i++) {
+      var d = addDays(s, i), c = covers[sl][d];
+      if ((c && c !== k) || index[slotKey(d, sl)] || listAt(d).filter(function (a) { return a.k !== k; }).length >= 2) break;
+      e = d;
+    }
+    return e;
+  }
+
+  // ---------- Repeating notes ----------
+  // A repeating note is stored once, on the day it starts from, with a rule:
+  //   { freq: 'day'|'week'|'month'|'year', every: n, days: [weekdays 0-6] (week),
+  //     by: 'date'|'nth' (month), nth: 1-4 or -1 for the last, wd: weekday (nth),
+  //     shiftUnit: ''|'days'|'work'|'next', shift: n (days/work days, may be negative), shiftWd: weekday (next),
+  //     until: 'YYYY-MM-DD' or '' }
+  // Example: "4 work days after the last Sunday of the month" = month, nth -1, wd 0, work, 4.
+  // The days it falls on are worked out when drawn (one year at a time) and are never stored.
+  var recurByYear = {};
+  function D(y, m, d) { return new Date(y, m, d); }
+  function plus(d, n) { return D(d.getFullYear(), d.getMonth(), d.getDate() + n); }
+  function daysIn(y, m) { return D(y, m + 1, 0).getDate(); }
+  function daysBetween(a, b) { return Math.round((parseKey(b) - parseKey(a)) / 86400000); }
+  function nthWeekday(y, m, nth, wd) {
+    if (nth < 0) { var last = D(y, m, daysIn(y, m)); return plus(last, -((last.getDay() - wd + 7) % 7)); }
+    var first = D(y, m, 1);
+    return plus(first, (wd - first.getDay() + 7) % 7 + (nth - 1) * 7);
+  }
+  function offDay(d) { try { return deps.isOffDay ? deps.isOffDay(d) : d.getDay() % 6 === 0; } catch (e) { return false; } }
+  function shifted(d, r) {
+    var n = r.shift | 0;
+    if (r.shiftUnit === 'days') return plus(d, n);
+    if (r.shiftUnit === 'work') {
+      if (!n) { for (var g = 0; g < 30 && offDay(d); g++) d = plus(d, 1); return d; }   // 0: the next work day if not one
+      var step = n < 0 ? -1 : 1;
+      for (var c = Math.abs(n), i = 0; c > 0 && i < 400; i++) { d = plus(d, step); if (!offDay(d)) c--; }
+      return d;
+    }
+    if (r.shiftUnit === 'next') { var x = plus(d, 1); while (x.getDay() !== (r.shiftWd | 0)) x = plus(x, 1); return x; }
+    return d;
+  }
+  /** The days (keys) a repeating note starting on k begins on, from..to */
+  function occurrences(k, r, from, to) {
+    k = dayOf(k);
+    var S = parseKey(k), out = [], every = Math.max(1, r.every | 0);
+    var last = r.until && r.until < to ? r.until : to;
+    if (last < from || last < k) return out;
+    var stop = addDays(last, 70);   // a base day this far after may still be moved back into range
+    var guard = 0;
+    function push(base) {
+      var o = key(shifted(base, r));
+      if (o >= k && o >= from && o <= last && out.indexOf(o) < 0 && !(r.skip && r.skip.indexOf(o) >= 0)) out.push(o);
+    }
+    var skip = Math.max(0, daysBetween(k, from) - 70);   // jump ahead to near 'from'
+    if (r.freq === 'day') {
+      for (var i = Math.floor(skip / every); guard++ < 5000; i++) {
+        var d = plus(S, i * every); if (key(d) > stop) break; push(d);
+      }
+    } else if (r.freq === 'week') {
+      var mon = plus(S, -((S.getDay() + 6) % 7)), days = (r.days && r.days.length ? r.days : [S.getDay()]);
+      for (var w = Math.floor(skip / 7 / every) * every; guard++ < 2000; w += every) {
+        var wk = plus(mon, w * 7);
+        if (key(wk) > stop) break;
+        days.forEach(function (wd) { push(plus(wk, (wd + 6) % 7)); });
+      }
+    } else if (r.freq === 'month') {
+      for (var m = 0; guard++ < 2000; m += every) {
+        var y = S.getFullYear(), mo = S.getMonth() + m;
+        var first = D(y, mo, 1);
+        if (key(first) > stop) break;
+        var base = r.by === 'nth' ? nthWeekday(first.getFullYear(), first.getMonth(), r.nth | 0 || 1, r.wd | 0)
+                                  : D(first.getFullYear(), first.getMonth(), Math.min(S.getDate(), daysIn(first.getFullYear(), first.getMonth())));
+        push(base);
+      }
+    } else if (r.freq === 'year') {
+      for (var yr = 0; guard++ < 500; yr += every) {
+        var yy = S.getFullYear() + yr;
+        var b = D(yy, S.getMonth(), Math.min(S.getDate(), daysIn(yy, S.getMonth())));
+        if (key(b) > stop) break;
+        push(b);
+      }
+    }
+    return out.sort();
+  }
+  function recurMap(y) {
+    if (recurByYear[y]) return recurByYear[y];
+    var map = {}, from = y + '-01-01', to = y + '-12-31';
+    Object.keys(index).sort().forEach(function (k) {
+      var n = index[k]; if (!n.repeat) return;
+      var dur = n.end ? daysBetween(k, n.end) : 0;
+      occurrences(k, n.repeat, addDays(from, -dur), to).forEach(function (o) {
+        var e = addDays(o, dur);
+        for (var d = o; d <= e; d = addDays(d, 1)) {
+          if (d < from || d > to || exc[k + '|' + d]) continue;   // a day the series has a changed note for
+          (map[d] = map[d] || []).push({ k: k, s: o, e: e });
+        }
+      });
+    });
+    return (recurByYear[y] = map);
+  }
+  function invalidate() { recurByYear = {}; }
+
+  var WD_NO = ['søndag', 'mandag', 'tirsdag', 'onsdag', 'torsdag', 'fredag', 'lørdag'];
+  var WD_EN = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  function wdName(i) { return T(WD_EN[i], WD_NO[i]); }
+  function wdShort(i) { return T(WD_EN[i].slice(0, 2), WD_NO[i].slice(0, 2)); }
+  var NTH_NO = { 1: 'første', 2: 'andre', 3: 'tredje', 4: 'fjerde', '-1': 'siste' };
+  var NTH_EN = { 1: 'first', 2: 'second', 3: 'third', 4: 'fourth', '-1': 'last' };
+  function shortDate(k) { var d = parseKey(k); return wdShort(d.getDay()) + '. ' + d.getDate() + '.' + (d.getMonth() + 1) + '.'; }
+  /** "Every month, last Sunday + 4 work days" */
+  function summary(k, r) {
+    if (!r) return '';
+    var S = parseKey(k), every = Math.max(1, r.every | 0), t;
+    if (r.freq === 'day') t = every > 1 ? T('Every ' + every + ' days', 'Hver ' + every + '. dag') : T('Every day', 'Hver dag');
+    else if (r.freq === 'week') {
+      t = (every > 1 ? T('Every ' + every + ' weeks', 'Hver ' + every + '. uke') : T('Every week', 'Hver uke')) + ' ' + T('on', 'på') + ' ' +
+        (r.days && r.days.length ? r.days : [S.getDay()]).slice().sort(function (a, b) { return (a + 6) % 7 - (b + 6) % 7; }).map(wdShort).join(', ');
+    } else if (r.freq === 'month') {
+      t = every > 1 ? T('Every ' + every + ' months', 'Hver ' + every + '. måned') : T('Every month', 'Hver måned');
+      t += r.by === 'nth' ? ', ' + T(NTH_EN[r.nth] + ' ' + wdName(r.wd), NTH_NO[r.nth] + ' ' + wdName(r.wd)) : ' ' + T('on the ' + S.getDate() + '.', 'den ' + S.getDate() + '.');
+    } else t = (every > 1 ? T('Every ' + every + ' years', 'Hvert ' + every + '. år') : T('Every year', 'Hvert år')) + ' ' + S.getDate() + '.' + (S.getMonth() + 1) + '.';
+    var n = r.shift | 0;
+    if (r.shiftUnit === 'days' && n) t += ' ' + (n > 0 ? '+ ' : '− ') + Math.abs(n) + ' ' + T(Math.abs(n) === 1 ? 'day' : 'days', Math.abs(n) === 1 ? 'dag' : 'dager');
+    if (r.shiftUnit === 'work') t += n ? ' ' + (n > 0 ? '+ ' : '− ') + Math.abs(n) + ' ' + T(Math.abs(n) === 1 ? 'work day' : 'work days', Math.abs(n) === 1 ? 'arbeidsdag' : 'arbeidsdager')
+                                     : T(', next work day if a day off', ', neste arbeidsdag hvis fridag');
+    if (r.shiftUnit === 'next') t += T(', then the first ' + wdName(r.shiftWd) + ' after', ', så første ' + wdName(r.shiftWd) + ' etter');
+    if (r.until) t += T(', until ', ', til og med ') + shortDate(r.until);
+    return t;
+  }
+  function nextOccurrences(k, r, count) {
+    var today = key(new Date());
+    return occurrences(k, r, today, addDays(today, 3 * 366)).slice(0, count);
+  }
+
+  // Save, or delete when nothing is left. Asks the browser once to keep the data (not evict it).
+  var askedPersist = false;
+  function save(n) {
+    remember(n);
+    if (isEmpty(n)) return deleteNote(n.date);
+    n.updated = Date.now();
+    if (!askedPersist && navigator.storage && navigator.storage.persist) {
+      askedPersist = true;
+      navigator.storage.persist().catch(function () {});
+    }
+    return putNote(n);
+  }
+
+  function expired(n, limit) {
+    limit = limit || oldestKept();
+    if (n.repeat) return !!n.repeat.until && addDays(n.repeat.until, n.endDate ? daysBetween(n.date, n.endDate) : 0) < limit;
+    return (n.endDate || n.date) < limit;
+  }
+  function removeOld() {
+    var limit = oldestKept();
+    return getAll().then(function (all) {
+      var old = all.filter(function (n) { return expired(n, limit); });
+      if (!old.length) return;
+      return tx('readwrite', function (s) { old.forEach(function (n) { s.delete(n.date); }); })
+        .then(function () { old.forEach(function (n) { delete index[n.date]; }); rebuildCover(); deps.render(); });
+    });
+  }
+
+  // ---------- Images: shrink before saving, so notes stay small and fast ----------
+  function shrinkImage(file) {
+    return new Promise(function (resolve, reject) {
+      var url = URL.createObjectURL(file), img = new Image();
+      img.onload = function () {
+        URL.revokeObjectURL(url);
+        var s = Math.min(1, MAX_IMAGE_SIDE / Math.max(img.width, img.height));
+        var c = document.createElement('canvas');
+        c.width = Math.max(1, Math.round(img.width * s));
+        c.height = Math.max(1, Math.round(img.height * s));
+        var g = c.getContext('2d');
+        g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height);
+        g.drawImage(img, 0, 0, c.width, c.height);
+        c.toBlob(function (b) { b ? resolve(b) : reject(new Error('could not convert image')); }, 'image/jpeg', 0.85);
+      };
+      img.onerror = function () { URL.revokeObjectURL(url); reject(new Error('not an image')); };
+      img.src = url;
+    });
+  }
+
+  // =====================================================================================
+  // Calendar hooks
+  // =====================================================================================
+
+  /** Marks a day cell that has a note: color, hatch and a small notepad icon. */
+  // A note over several days looks like one piece: no line between its days in the same week (and month),
+  // and the notepad icon only on its last day (in each month).
+  // Two notes on a day: the top half has one, the bottom half the other, with a thin white line between.
+  function decorate(cell, date) {
+    var dk = key(date), pair = shownAt(dk), shown = pair.filter(Boolean);
+    if (!shown.length) return;
+    cell.classList.add('note');
+    if (shown.some(function (a) { return index[a.k].repeat; })) cell.classList.add('noteRepeat');
+    if (shown.some(function (a) { return a.e !== a.s; })) {
+      var lastOfMonth = new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate() === date.getDate();
+      var goesOn = shown.every(function (a) { return dk !== a.e; }), cameFrom = shown.every(function (a) { return dk !== a.s; });
+      if (cameFrom && date.getDay() !== 1 && date.getDate() !== 1) cell.classList.add('noteJoinL');
+      if (goesOn && date.getDay() !== 0 && !lastOfMonth) cell.classList.add('noteJoinR');
+      if (goesOn && !lastOfMonth) cell.classList.add('noteNoIcon');
+    }
+    var plain = !cell.classList.contains('today') && !cell.classList.contains('holiday') && !cell.classList.contains('gold');
+    var hexes = shown.map(function (a) { return colorHex(index[a.k].color); });
+    if (shown.length === 2 && plain) {
+      var top = hexes[0] || '#fff', bottom = hexes[1] || '#fff';
+      cell.style.backgroundImage = 'linear-gradient(to bottom, ' + top + ' 0 calc(50% - .75px), #fff calc(50% - .75px) calc(50% + .75px), ' + bottom + ' calc(50% + .75px))';
+      cell.classList.add('noteSplit', hexes[0] && hexes[1] ? 'noteColored' : 'noteMixed');
+      return;
+    }
+    var hex = hexes[0] || hexes[1];
+    if (hex && plain) {
+      cell.style.backgroundColor = hex;
+      cell.classList.add('noteColored');
+      return;
+    }
+    // A holiday, today or birthday keeps its look: the note's color shows as a corner mark, top right.
+    // With two notes the bottom note gets the bottom right corner (like the bottom half of other days).
+    var c1 = shown.length === 2 ? hexes[0] : hex, c2 = shown.length === 2 ? hexes[1] : null;
+    if (c1) cell.style.setProperty('--note-color', c1);
+    if (c2) cell.style.setProperty('--note-color2', c2);
+    if (c1 || c2) cell.classList.add('noteCorner');
+  }
+
+  function hasNote(date) { return listAt(key(date)).length > 0; }
+  function spanText(k, end) {
+    var a = parseKey(k), b = parseKey(end);
+    return a.getDate() + '.' + (a.getMonth() + 1) + '. – ' + b.getDate() + '.' + (b.getMonth() + 1) + '.';
+  }
+
+  /** Hover tooltip for a day with a note: the text (and the first image), under the holiday name if any. */
+  function fillTip(tip, date, holidayText, onResize) {
+    var list = shownList(key(date));
+    if (!list.length) return false;
+    tip.innerHTML = '';
+    tip.classList.add('noteTip');
+    if (holidayText) tip.appendChild(el('div', 'tipHoliday', holidayText));
+    list.forEach(function (a, i) {
+      var sk = a.k, n = index[sk];
+      var part = el('div', 'tipNote' + (i ? ' tipSecond' : ''));
+      tip.appendChild(part);
+      if (list.length > 1) { var hex = colorHex(n.color); if (hex) part.style.borderLeftColor = hex; part.classList.add('tipMarked'); }
+      if (a.e !== a.s) part.appendChild(el('div', 'tipSpan', spanText(a.s, a.e)));
+      if (n.repeat) part.appendChild(el('div', 'tipSpan', '↻ ' + summary(sk, n.repeat)));
+      var text = n.text.trim(), max = list.length > 1 ? 200 : 400;
+      if (text) part.appendChild(el('div', 'tipText', text.length > max ? text.slice(0, max) + '…' : text));
+      if (n.images) {
+        var holder = el('div', 'tipImages');
+        part.appendChild(holder);
+        getNote(sk).then(function (full) {
+          if (!full || !full.images || tip.classList.contains('hidden')) return;
+          full.images.slice(0, list.length > 1 ? 1 : 2).forEach(function (b) {
+            var img = el('img');
+            img.src = URL.createObjectURL(b);
+            img.onload = function () { URL.revokeObjectURL(img.src); if (onResize) onResize(); };
+            holder.appendChild(img);
+          });
+        }).catch(function () {});
+      }
+    });
+    return true;
+  }
+
+  // =====================================================================================
+  // Editor: click a day, write, pick a color, paste an image. Saves by itself.
+  // =====================================================================================
+
+  function isOpen() { return !!editor; }
+
+  // ---------- Peek: a small, non-blocking box for a clicked day, with a button that opens the editor ----------
+  var peek = null;
+  function openPeek(cell, date, holidayText) {
+    // A second click on the same day closes it again (back to the plain calendar)
+    var same = peek && peek.cell.dataset.date === cell.dataset.date && document.body.contains(peek.cell);
+    closePeek();
+    if (same) return;
+    var dk = key(date), list = shownList(dk);
+    var box = el('div', 'notePeek');
+    // A pen button for each note on the day (the picked day already has a black frame), + for a second note,
+    // plus the holiday name if the day has one
+    function button(text, title, pick, hex) {
+      var b = el('button', 'npOpen', text);
+      b.title = title;
+      b.setAttribute('aria-label', title);
+      if (hex) b.style.boxShadow = 'inset 0 -3px 0 ' + hex;
+      b.addEventListener('click', function (e) { e.stopPropagation(); closePeek(); openEditor(cell, date, holidayText, false, pick); });
+      box.appendChild(b);
+    }
+    if (!list.length) button('✎', T('Write a note', 'Skriv notat'));
+    list.forEach(function (a, i) {
+      var n = index[a.k], first = n.text.trim().split('\n')[0];
+      button('✎', (list.length > 1 ? T(i ? 'Bottom note' : 'Top note', i ? 'Nederste notat' : 'Øverste notat') : T('Open note', 'Åpne notat')) + (first ? ': ' + first : ''),
+             a.k, list.length > 1 ? colorHex(n.color) : null);
+    });
+    if (list.length === 1 && available && freeSlot(dk, dk, null) >= 0) button('+', T('Another note on this day', 'Et notat til på denne dagen'), 'new');
+    if (holidayText) box.appendChild(el('span', 'npHoliday', holidayText));
+    box.addEventListener('click', closePeek);   // a click on the box itself (not the button) just closes it
+    document.body.appendChild(box);
+    cell.classList.add('picked');
+    peek = { box: box, cell: cell, date: date, holidayText: holidayText };
+    place(box, cell, true);
+  }
+  function closePeek() {
+    if (!peek) return;
+    peek.cell.classList.remove('picked');
+    peek.box.remove();
+    peek = null;
+  }
+  function isPeekOpen() { return !!peek; }
+  // Enter on the keyboard: open the note of the picked day (the one with the small box)
+  function openPicked() {
+    if (!peek || !document.body.contains(peek.cell)) return false;
+    var p = peek;
+    openEditor(p.cell, p.date, p.holidayText);
+    return true;
+  }
+
+  // pick: which note on the day (its key), 'new' for another note on the day, or nothing for the first one
+  function openEditor(cell, date, holidayText, wholeSeries, pick) {
+    closePeek();
+    if (editor) closeEditor();
+    var dk = key(date), list = listAt(dk), a = null;
+    if (pick !== 'new') {
+      // Nothing picked: the first note the calendar shows (a new one if it shows none and there is room)
+      if (!pick) pick = (shownList(dk)[0] || (freeSlot(dk, dk, null) < 0 ? list[0] : null) || {}).k || 'new';
+    }
+    if (pick !== 'new') {
+      a = list.filter(function (x) { return x.k === pick; })[0] || null;
+      if (!a && pick && index[pick]) a = { k: pick, s: dayOf(pick), e: index[pick].end || dayOf(pick), slot: slotOf(pick) };
+    }
+    // A day inside a multi-day note opens that note (from its first day)
+    // A day of a repeating note opens that day: it becomes its own note (an exception) only when changed,
+    // in a free half of that day. "Edit series" opens the series itself (wholeSeries).
+    var series = a && index[a.k] && index[a.k].repeat && !wholeSeries ? a.k : null;
+    var k;
+    if (series) {
+      var sl = [a.slot, 1 - a.slot].filter(function (x) {
+        for (var d = a.s; d <= a.e; d = addDays(d, 1)) if (covers[x][d]) return false;
+        return !index[slotKey(a.s, x)];
+      })[0];
+      k = slotKey(a.s, sl == null ? a.slot : sl);
+    } else if (a) k = a.k;
+    else { var free = freeSlot(dk, dk, null); k = slotKey(dk, free < 0 ? 0 : free); }
+    var day = dayOf(k);
+    if (day !== dk) { date = parseKey(day); holidayText = ''; }
+    var isSeries = !!(index[k] && index[k].repeat);
+    var box = el('div', 'noteEditor');
+    box.setAttribute('role', 'dialog');
+    var head = el('div', 'neHead');
+    head.appendChild(el('span', 'neTitle', deps.dayTitle(date)));
+    // – last day: a note can run over several days. The same day = a note for just that day.
+    var endInput = el('input', 'neEnd'); endInput.type = 'date';
+    endInput.min = day; endInput.max = maxEnd(k); endInput.value = day;
+    endInput.title = T('Last day of the note', 'Siste dag for notatet');
+    var dash = el('span', 'neDash', '–');
+    head.appendChild(dash);
+    head.appendChild(endInput);
+    if (holidayText) head.appendChild(el('span', 'neHoliday', holidayText));
+    var x = el('button', 'neClose', '✕'); x.title = T('Close', 'Lukk');
+    head.appendChild(x);
+    box.appendChild(head);
+    var bar = el('div', 'neSeries hidden');
+    box.appendChild(bar);
+
+    if (!available) {
+      dash.remove(); endInput.remove();
+      box.appendChild(el('p', 'neInfo', T(
+        'Notes are not available in this browser (private window or storage blocked).',
+        'Notater er ikke tilgjengelig i denne nettleseren (privat vindu eller lagring sperret).')));
+      document.body.appendChild(box);
+      editor = { box: box, note: null };
+      x.addEventListener('click', closeEditor);
+      position(box, cell);
+      return;
+    }
+
+    var area = el('textarea', 'neText');
+    area.placeholder = T('Write a note…', 'Skriv et notat …');
+    area.rows = 3;
+    box.appendChild(area);
+    var images = el('div', 'neImages');
+    box.appendChild(images);
+
+    var row = el('div', 'neRow');
+    var swatches = el('div', 'neColors');
+    [''].concat(COLORS.map(function (c) { return c.id; })).forEach(function (id) {
+      var b = el('button', 'neSwatch' + (id ? '' : ' none'), String(colorNo(id)));
+      if (id) b.style.backgroundColor = colorHex(id);
+      b.title = colorNo(id) + ' · ' + colorLabel(id); b.dataset.color = id;
+      swatches.appendChild(b);
+    });
+    row.appendChild(swatches);
+    var check = el('button', 'neBtn neCheck', '☑'); check.title = T('Checklist: tick box on this line', 'Sjekkliste: avkrysningsboks på denne linjen');
+    row.appendChild(check);
+    var rep = el('button', 'neBtn neRepeatBtn', '↻'); rep.title = T('Repeat', 'Gjenta');
+    row.appendChild(rep);
+    var addImg = el('button', 'neBtn', '🖼'); addImg.title = T('Add picture (or paste with Ctrl+V)', 'Legg til bilde (eller lim inn med Ctrl+V)');
+    var del = el('button', 'neBtn neDelete'); del.title = T('Delete note', 'Slett notat');
+    // A drawn bin in black, like the other buttons (the 🗑 emoji is pale grey on Windows)
+    del.innerHTML = BIN_SVG;
+    row.appendChild(addImg);
+    row.appendChild(del);
+    box.appendChild(row);
+    var file = el('input'); file.type = 'file'; file.accept = 'image/*'; file.multiple = true; file.hidden = true;
+    box.appendChild(file);
+    var panel = el('div', 'neRepeat hidden');
+    box.appendChild(panel);
+    var hint = el('div', 'neHint', deps.isTouch()
+      ? T('Saved automatically. Kept ' + keptFor() + '. ☑ makes a checklist: tap a box to tick it.',
+          'Lagres automatisk. Tas vare på ' + keptFor() + '. ☑ lager sjekkliste: trykk på en boks for å krysse av.')
+      : T('Saved automatically. Paste pictures with Ctrl+V. Kept ' + keptFor() + '. ☑ makes a checklist: click a box to tick it. Ctrl+Enter saves and closes.',
+          'Lagres automatisk. Lim inn bilder med Ctrl+V. Tas vare på ' + keptFor() + '. ☑ lager sjekkliste: klikk på en boks for å krysse av. Ctrl+Enter lagrer og lukker.'));
+    box.appendChild(hint);
+
+    var note = { date: k, text: '', color: '', images: [], endDate: '', repeat: null, series: series || '', dirty: !series };
+    editor = { box: box, note: note, timer: null, cell: cell };
+    document.body.appendChild(box);
+    position(box, cell);
+
+    // Two notes on a day may not have the same color: the colors another note has on this note's days are
+    // greyed out (No color is always free). A color the note already has stays, so older notes still open.
+    function takenColors() {
+      var taken = {}, last = note.endDate && note.endDate > day ? note.endDate : day;
+      for (var d = day, i = 0; d <= last && i < MAX_SPAN_DAYS; d = addDays(d, 1), i++) {
+        listAt(d).forEach(function (o) { if (o.k !== k && o.k !== series && index[o.k] && index[o.k].color) taken[index[o.k].color] = 1; });
+      }
+      return taken;
+    }
+    function showColor() {
+      var taken = takenColors();
+      Array.prototype.forEach.call(swatches.children, function (b) {
+        var c = b.dataset.color, off = !!taken[c] && c !== (note.color || '');
+        b.classList.toggle('on', c === (note.color || ''));
+        b.classList.toggle('taken', off);
+        b.disabled = off;
+        b.title = colorNo(c) + ' · ' + colorLabel(c) + (off ? ' · ' + T('used by the other note this day', 'brukt av det andre notatet denne dagen') : '');
+      });
+    }
+    function showImages() {
+      images.innerHTML = '';
+      note.images.forEach(function (b, i) {
+        var wrap = el('span', 'neThumb');
+        var img = el('img'); img.src = URL.createObjectURL(b);
+        img.title = T('Show picture', 'Vis bildet');
+        img.addEventListener('click', function () { showImage(b); });
+        var rm = el('button', 'neThumbX', '✕'); rm.title = T('Remove picture', 'Fjern bildet');
+        rm.addEventListener('click', function () { note.images.splice(i, 1); showImages(); saveSoon(0); });
+        wrap.appendChild(img); wrap.appendChild(rm);
+        images.appendChild(wrap);
+      });
+      images.classList.toggle('hidden', !note.images.length);
+      position(box, cell);
+    }
+    function saveSoon(ms) {
+      note.dirty = true;
+      clearTimeout(editor.timer);
+      editor.timer = setTimeout(function () { flush(); }, ms == null ? 400 : ms);
+    }
+    function addFiles(files) {
+      var list = Array.prototype.filter.call(files || [], function (f) { return /^image\//.test(f.type); });
+      list = list.slice(0, Math.max(0, MAX_IMAGES - note.images.length));
+      if (!list.length) return false;
+      Promise.all(list.map(function (f) { return shrinkImage(f).catch(function () { return null; }); })).then(function (blobs) {
+        blobs.forEach(function (b) { if (b) note.images.push(b); });
+        showImages(); saveSoon(0);
+      });
+      return true;
+    }
+
+    area.addEventListener('input', function () { note.text = area.value; saveSoon(); });
+    // Checklists: a line that starts with ☐ is a task, ☑ a done task
+    function setText(text, caret) {
+      area.value = text; note.text = text;
+      area.setSelectionRange(caret, caret);
+      saveSoon(0);
+    }
+    check.addEventListener('click', function () {
+      var v = area.value, a = area.selectionStart, b = area.selectionEnd;
+      var start = v.lastIndexOf('\n', a - 1) + 1, end = v.indexOf('\n', b); if (end < 0) end = v.length;
+      var lines = v.slice(start, end).split('\n');
+      var off = lines.every(function (l) { return BOX.test(l); });
+      var block = lines.map(function (l) { return off ? l.replace(BOX, '') : '☐ ' + l; }).join('\n');
+      setText(v.slice(0, start) + block + v.slice(end), start + block.length);
+      area.focus();
+    });
+    area.addEventListener('click', function () {   // click on a box: tick it (or untick)
+      var v = area.value, p = area.selectionStart;
+      if (p !== area.selectionEnd) return;
+      [p, p - 1].some(function (i) {
+        if (i < 0 || (v[i] !== '☐' && v[i] !== '☑') || (i > 0 && v[i - 1] !== '\n')) return false;
+        setText(v.slice(0, i) + (v[i] === '☐' ? '☑' : '☐') + v.slice(i + 1), Math.min(v.length, i + 2));
+        return true;
+      });
+    });
+    area.addEventListener('keydown', function (e) {   // Enter on a task line: the next line is a task too
+      if (e.key !== 'Enter' || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+      var v = area.value, p = area.selectionStart, start = v.lastIndexOf('\n', p - 1) + 1;
+      var line = v.slice(start, p);
+      if (!BOX.test(line) || p !== area.selectionEnd) return;
+      e.preventDefault();
+      if (!line.replace(BOX, '').trim()) setText(v.slice(0, start) + v.slice(p), start);   // empty task: end the list
+      else setText(v.slice(0, p) + '\n☐ ' + v.slice(p), p + 3);
+    });
+    endInput.addEventListener('change', function () {
+      var v = endInput.value;
+      if (!v || v < day) v = day;
+      if (v > endInput.max) v = endInput.max;
+      endInput.value = v;
+      note.endDate = v > day ? v : '';
+      showColor();   // more days can mean more colors taken
+      saveSoon(0);
+    });
+    area.addEventListener('paste', function (e) {
+      var files = e.clipboardData && e.clipboardData.files;
+      if (files && files.length && addFiles(files)) e.preventDefault();
+    });
+    box.addEventListener('dragover', function (e) { e.preventDefault(); });
+    box.addEventListener('drop', function (e) { e.preventDefault(); addFiles(e.dataTransfer && e.dataTransfer.files); });
+    swatches.addEventListener('click', function (e) {
+      var b = e.target.closest('.neSwatch'); if (!b || b.disabled) return;
+      note.color = b.dataset.color; showColor(); saveSoon(0);
+    });
+    addImg.addEventListener('click', function () { file.click(); });
+    file.addEventListener('change', function () { addFiles(file.files); file.value = ''; });
+    del.addEventListener('click', function () {
+      if (note.series) { skipDay(); return; }   // a day of a series: the series skips it
+      note.text = ''; note.color = ''; note.images = []; note.repeat = null; note.dirty = true;
+      closeEditor();
+    });
+    x.addEventListener('click', closeEditor);
+    function showRepeat() {
+      rep.classList.toggle('on', !!note.repeat);
+      repeatPanel(panel, note, function () { showRepeat(); saveSoon(0); });
+      position(box, cell);
+    }
+    rep.addEventListener('click', function () {
+      panel.classList.toggle('hidden');
+      hint.classList.toggle('hidden', !panel.classList.contains('hidden'));   // room for the panel in a small window
+      if (!panel.classList.contains('hidden')) showRepeat(); else position(box, cell);
+    });
+    // Ctrl+Enter: save and close (no new line in the text)
+    box.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); e.stopPropagation(); closeEditor(); }
+    });
+
+    // Focus right away (inside the click, so phones show the keyboard), so nothing typed is lost.
+    // On a phone an existing note opens for reading first; tap the text to edit.
+    if (!deps.isTouch() || !index[k]) area.focus();
+    if (series) rep.classList.add('hidden');   // one day of a series: no rule of its own
+    getNote(series || k).then(function (saved) {
+      if (!editor || editor.note !== note) return;
+      if (saved && series) {   // start from the series' text, color and pictures, on this day
+        saved = { text: saved.text, color: saved.color, images: saved.images, endDate: a.e > a.s ? a.e : '' };
+      }
+      if (saved && saved.series) note.series = saved.series;
+      if (!series) editor.orig = saved ? copyNote0(saved) : null;   // for Undo after a change or a delete
+      if (saved) {
+        note.color = saved.color || ''; note.images = saved.images || [];
+        note.endDate = saved.endDate || ''; endInput.value = note.endDate || day;
+        note.repeat = saved.repeat || null;
+        rep.classList.toggle('on', !!note.repeat);
+        note.text = (saved.text || '') + area.value;   // keep anything typed while loading
+        area.value = note.text;
+      }
+      showColor(); showImages();
+      showSeriesBar();
+    }).catch(function () { showColor(); });
+    showColor();
+
+    // The bar for a repeating note: what this is, and what can be done with the series
+    function showSeriesBar() {
+      var sk = note.series || (isSeries ? k : '');
+      var sn = sk && index[sk];
+      bar.innerHTML = '';
+      bar.classList.toggle('hidden', !sn || !sn.repeat);
+      if (!sn || !sn.repeat) return;
+      if (isSeries) {
+        bar.appendChild(el('span', 'nsText', '↻ ' + T('The whole series. Changes apply to all its days.', 'Hele serien. Endringer gjelder alle dagene.')));
+        panel.classList.remove('hidden'); hint.classList.add('hidden'); showRepeat();
+        return;
+      }
+      bar.appendChild(el('span', 'nsText', '↻ ' + (note.series && !series
+        ? T('This day is changed from the series.', 'Denne dagen er endret fra serien.')
+        : T('One day in a series. Writing here changes only this day.', 'Én dag i en serie. Det du skriver her, gjelder bare denne dagen.'))));
+      function button(label, title, fn) {
+        var b = el('button', 'nsBtn', label); b.title = title;
+        b.addEventListener('click', function (e) { e.stopPropagation(); fn(); });
+        bar.appendChild(b);
+      }
+      button(T('Edit series', 'Rediger serien'), summary(sk, sn.repeat), function () {
+        closeEditor();
+        openEditor(cell, parseKey(sk), '', true);
+      });
+      button(T('Delete this day', 'Slett denne dagen'), T('The series skips this day', 'Serien hopper over denne dagen'), skipDay);
+      button(T('End series here', 'Avslutt serien her'), T('No more days from this one', 'Ingen flere dager fra og med denne'), function () {
+        drop();
+        var undo = null;
+        snapshot([sk]).then(function (u) { undo = u; return getNote(sk); }).then(function (n) {
+          if (!n || !n.repeat) return;
+          if (addDays(day, -1) < dayOf(n.date)) { n.text = ''; n.color = ''; n.images = []; n.repeat = null; return save(n); }   // nothing left
+          n.repeat.until = addDays(day, -1);
+          return save(n);
+        }).then(function () {
+          deps.render();
+          if (undo) showUndo(T('Series ended.', 'Serien er avsluttet.'), undo);
+        }, deps.render);
+      });
+    }
+    function skipDay() {
+      var sk = note.series, undo = null;
+      drop();
+      snapshot([sk, k]).then(function (u) { undo = u; return getNote(sk); }).then(function (n) {
+        if (!n || !n.repeat) return;
+        n.repeat.skip = (n.repeat.skip || []).concat([day]);
+        return (index[k] && index[k].series === sk ? deleteNote(k).then(function () { delete index[k]; }) : Promise.resolve())
+          .then(function () { return save(n); });
+      }).then(function () {
+        deps.render();
+        if (undo) showUndo(T('Day deleted from the series.', 'Dagen er slettet fra serien.'), undo);
+      }, deps.render);
+    }
+    // Close without saving what is open (the series buttons save themselves)
+    function drop() { if (editor) { clearTimeout(editor.timer); editor.note = null; } closeEditor(); }
+    editor.changeStart = function (v) {   // series: a new first day (it is the note's key)
+      if (!v || v === day) return;
+      if (index[slotKey(v, slotOf(k))]) { alert(T('There is already a note on that day.', 'Det er allerede et notat på den dagen.')); return; }
+      flush().then(function () { return getNote(k); }).then(function (n) {
+        if (!n) return;
+        var len = n.endDate ? daysBetween(n.date, n.endDate) : 0;
+        drop();
+        return relocate(n, v, addDays(v, len)).then(function () { openEditor(cell, parseKey(v), '', true); });
+      });
+    };
+  }
+
+  // The repeat panel in the editor: a few choices that read as a sentence, and the next days it gives
+  function repeatPanel(panel, note, changed) {
+    var r = note.repeat, S = parseKey(note.date);
+    panel.innerHTML = '';
+    function select(options, value, onChange, cls) {
+      var s = el('select', cls || '');
+      options.forEach(function (o) { var op = el('option', '', o[1]); op.value = String(o[0]); s.appendChild(op); });
+      s.value = String(value);
+      s.addEventListener('change', function () { onChange(s.value); });
+      return s;
+    }
+    function num(value, min, max, onChange) {
+      var i = el('input', 'nrNum'); i.type = 'number'; i.min = min; i.max = max; i.value = value;
+      i.addEventListener('change', function () {
+        var v = parseInt(i.value, 10); if (isNaN(v)) v = min > 0 ? min : 0;
+        v = Math.max(min, Math.min(max, v)); i.value = v; onChange(v);
+      });
+      return i;
+    }
+    function line(cls) { var l = el('div', 'nrLine' + (cls ? ' ' + cls : '')); panel.appendChild(l); return l; }
+    function set(field, v) { r[field] = v; changed(); }
+    var wds = [1, 2, 3, 4, 5, 6, 0];
+
+    var l1 = line();
+    l1.appendChild(el('span', '', T('Repeat', 'Gjenta')));
+    l1.appendChild(select([['', T('Never', 'Aldri')], ['day', T('Daily', 'Daglig')], ['week', T('Weekly', 'Ukentlig')],
+      ['month', T('Monthly', 'Månedlig')], ['year', T('Yearly', 'Årlig')]], r ? r.freq : '', function (v) {
+        note.repeat = v ? { freq: v, every: 1, days: [S.getDay()], by: 'date', nth: -1, wd: S.getDay(), shiftUnit: '', shift: 0, shiftWd: 4, until: '' } : null;
+        changed();
+      }));
+    var help = el('button', 'nrHelp', '?'); help.title = T('How repeating works', 'Slik virker gjentakelse');
+    help.addEventListener('click', function (e) { e.stopPropagation(); showRepeatHelp(); });
+    if (!r) { l1.appendChild(help); return; }
+    l1.appendChild(el('span', '', T('every', 'hver')));
+    l1.appendChild(num(r.every || 1, 1, 99, function (v) { set('every', v); }));
+    l1.appendChild(el('span', '', r.every > 1
+      ? T({ day: 'days', week: 'weeks', month: 'months', year: 'years' }[r.freq], { day: '. dag', week: '. uke', month: '. måned', year: '. år' }[r.freq])
+      : T({ day: 'day', week: 'week', month: 'month', year: 'year' }[r.freq], { day: 'dag', week: 'uke', month: 'måned', year: 'år' }[r.freq])));
+
+    if (r.freq === 'week') {
+      var l2 = line();
+      wds.forEach(function (wd) {
+        var b = el('button', 'nrDay' + ((r.days || []).indexOf(wd) >= 0 ? ' on' : ''), wdShort(wd));
+        b.addEventListener('click', function () {
+          var d = (r.days || []).slice(), i = d.indexOf(wd);
+          if (i >= 0) { if (d.length > 1) d.splice(i, 1); } else d.push(wd);
+          set('days', d);
+        });
+        l2.appendChild(b);
+      });
+    }
+    if (r.freq === 'month') {
+      var l3 = line();
+      l3.appendChild(select([['date', T('on day ' + S.getDate(), 'på dag ' + S.getDate())], ['1', T('first', 'første')], ['2', T('second', 'andre')],
+        ['3', T('third', 'tredje')], ['4', T('fourth', 'fjerde')], ['-1', T('last', 'siste')]], r.by === 'nth' ? r.nth : 'date', function (v) {
+          if (v === 'date') r.by = 'date'; else { r.by = 'nth'; r.nth = parseInt(v, 10); }
+          changed();
+        }));
+      if (r.by === 'nth') l3.appendChild(select(wds.map(function (wd) { return [wd, wdName(wd)]; }), r.wd, function (v) { set('wd', parseInt(v, 10)); }));
+      l3.appendChild(el('span', '', T('in the month', 'i måneden')));
+    }
+
+    var l4 = line();
+    l4.appendChild(el('span', '', T('Move', 'Flytt')));
+    l4.appendChild(select([['', T('no', 'nei')], ['days', T('days', 'dager')], ['work', T('work days', 'arbeidsdager')],
+      ['next', T('to the first', 'til første')]], r.shiftUnit || '', function (v) { r.shiftUnit = v; changed(); }));
+    if (r.shiftUnit === 'days' || r.shiftUnit === 'work') l4.insertBefore(num(r.shift | 0, -60, 60, function (v) { set('shift', v); }), l4.lastChild);
+    if (r.shiftUnit === 'next') {
+      l4.appendChild(select(wds.map(function (wd) { return [wd, wdName(wd)]; }), r.shiftWd, function (v) { set('shiftWd', parseInt(v, 10)); }));
+      l4.appendChild(el('span', '', T('after', 'etter')));
+    }
+
+    var l0 = line();
+    l0.appendChild(el('span', '', T('Starts', 'Starter')));
+    var start = el('input', 'neEnd'); start.type = 'date'; start.value = dayOf(note.date);
+    start.addEventListener('change', function () { if (editor && editor.changeStart) editor.changeStart(start.value); });
+    l0.appendChild(start);
+    var l5 = l0;
+    l5.appendChild(el('span', '', T('until', 'til og med')));
+    var until = el('input', 'neEnd'); until.type = 'date'; until.min = dayOf(note.date); until.value = r.until || '';
+    until.addEventListener('change', function () { set('until', until.value && until.value >= dayOf(note.date) ? until.value : ''); });
+    l5.appendChild(until);
+    if (!r.until) l5.appendChild(el('span', 'nrMuted', T('(no end)', '(uten slutt)')));
+    l1.appendChild(help);
+
+    var next = nextOccurrences(note.date, r, 4);
+    var l6 = line('nrNext');
+    l6.textContent = '↻ ' + summary(note.date, r).replace(/\.?$/, '. ') + (next.length
+      ? T('Next: ', 'Neste: ') + next.map(shortDate).join(', ')
+      : T('No more days.', 'Ingen flere dager.'));
+  }
+
+  // The ? in the repeat panel: what each choice does, with examples
+  var helpBox = null;
+  function closeRepeatHelp() {
+    if (!helpBox) return;
+    helpBox.remove(); helpBox = null;
+    document.removeEventListener('keydown', helpKey, true);
+  }
+  function helpKey(e) { if (e.key === 'Escape') { e.stopPropagation(); e.preventDefault(); closeRepeatHelp(); } }
+  function showRepeatHelp() {
+    closeRepeatHelp();
+    var no = T('', 'x') === 'x';
+    var html = no ? [
+      '<h2>Slik virker gjentakelse</h2>',
+      '<p><b>Gjenta</b> daglig, ukentlig, månedlig eller årlig. «Hver 2.» betyr annenhver gang. Ukentlig: velg en eller flere ukedager. Månedlig: <i>på dag 15</i> (samme dato som notatet) eller <i>første … siste</i> ukedag i måneden.</p>',
+      '<p><b>Flytt</b> skyver hver dato etterpå:</p><ul>',
+      '<li><i>dager</i>: vanlige kalenderdager. Minus flytter bakover (−2 = to dager før).</li>',
+      '<li><i>arbeidsdager</i>: hopper over helger og røde dager i kalenderen (helligdager, påske, jul). 0 = neste arbeidsdag hvis datoen er en fridag.</li>',
+      '<li><i>til første … etter</i>: neste valgte ukedag, uansett helligdager.</li></ul>',
+      '<p><b>Til og med</b>: siste dato. Tom = uten slutt.</p>',
+      '<p><b>Neste:</b> nederst i panelet viser de neste datoene. Sjekk dem når du lager en regel.</p>',
+      '<h3>Eksempler</h3><ul>',
+      '<li><b>Frist 4 arbeidsdager etter siste søndag</b> (cut-off søndag): Månedlig · siste søndag · Flytt 4 arbeidsdager. Velg <i>arbeidsdager</i>, ikke «til første torsdag etter»: torsdagen blir feil i uker med helligdager, for eksempel i jula og påsken.</li>',
+      '<li><b>Første arbeidsdag i måneden</b>: lag notatet på den 1., Månedlig · på dag 1 · Flytt 0 arbeidsdager.</li>',
+      '<li><b>Annenhver mandag</b>: Ukentlig · hver 2. uke · ma.</li>',
+      '<li><b>Bursdag</b>: Årlig.</li></ul>',
+      '<h3>Enkeltdager og hele serien</h3>',
+      '<p>Åpner du en dag i serien, gjelder det du skriver bare den dagen (for eksempel avkrysninger i en sjekkliste). Dagen blir et eget notat og slettes når den er eldre enn ' + keepText() + ' bakover, som andre notater, mens serien fortsetter. <i>Rediger serien</i> endrer tekst, farge og regel for alle dagene, og <i>Starter</i> kan flyttes der. <i>Slett denne dagen</i> hopper over én dag, og <i>Avslutt serien her</i> stopper den fra og med den dagen.</p>'
+    ] : [
+      '<h2>How repeating works</h2>',
+      '<p><b>Repeat</b> daily, weekly, monthly or yearly. "Every 2" means every other time. Weekly: pick one or more weekdays. Monthly: <i>on day 15</i> (the note\'s date) or the <i>first … last</i> weekday of the month.</p>',
+      '<p><b>Move</b> shifts each date afterwards:</p><ul>',
+      '<li><i>days</i>: calendar days. Minus moves back (−2 = two days before).</li>',
+      '<li><i>work days</i>: skips weekends and red days in the calendar (holidays, Easter, Christmas). 0 = the next work day if the date is a day off.</li>',
+      '<li><i>to the first … after</i>: the next chosen weekday, holidays or not.</li></ul>',
+      '<p><b>Until</b>: the last date. Empty = no end.</p>',
+      '<p><b>Next:</b> at the bottom of the panel shows the coming dates. Check them when you make a rule.</p>',
+      '<h3>Examples</h3><ul>',
+      '<li><b>Deadline 4 work days after the last Sunday</b> (cut-off Sunday): Monthly · last Sunday · Move 4 work days. Choose <i>work days</i>, not "to the first Thursday after": that Thursday is wrong in weeks with holidays, such as Christmas and Easter.</li>',
+      '<li><b>First work day of the month</b>: make the note on the 1st, Monthly · on day 1 · Move 0 work days.</li>',
+      '<li><b>Every other Monday</b>: Weekly · every 2 weeks · Mo.</li>',
+      '<li><b>Birthday</b>: Yearly.</li></ul>',
+      '<h3>One day or the whole series</h3>',
+      '<p>When you open a day of the series, what you write applies to that day only (ticked checklist items, for example). The day becomes a note of its own and is deleted when it is older than ' + keepText() + ' back, like other notes, while the series goes on. <i>Edit series</i> changes text, color and rule for all days, and <i>Starts</i> can be moved there. <i>Delete this day</i> skips one day, and <i>End series here</i> stops it from that day on.</p>'
+    ];
+    helpBox = el('div', 'noteHelp');
+    var inner = el('div', 'nhBox');
+    inner.innerHTML = html.join('');
+    var x = el('button', 'neClose', '✕'); x.title = T('Close', 'Lukk');
+    x.addEventListener('click', closeRepeatHelp);
+    inner.insertBefore(x, inner.firstChild);
+    helpBox.appendChild(inner);
+    helpBox.addEventListener('click', function (e) { if (e.target === helpBox) closeRepeatHelp(); });
+    document.body.appendChild(helpBox);
+    document.addEventListener('keydown', helpKey, true);
+  }
+
+  function flush() {
+    if (!editor || !editor.note || !editor.note.dirty) return Promise.resolve();
+    clearTimeout(editor.timer);
+    var n = { date: editor.note.date, text: editor.note.text, color: editor.note.color, images: editor.note.images.slice() };
+    if (editor.note.series) n.series = editor.note.series;
+    if (editor.note.endDate) n.endDate = editor.note.endDate;
+    if (editor.note.repeat) n.repeat = editor.note.repeat;
+    return save(n).then(deps.render, function () { deps.render(); });
+  }
+
+  function closeEditor() {
+    if (!editor) return;
+    var ed = editor;
+    closeRepeatHelp();
+    var done = flush();
+    editor = null;
+    // Undo after changing or deleting a note (not after writing a new one). A changed day of a series: Undo removes the change.
+    var n = ed.note;
+    if (n && n.dirty && (ed.orig ? changed(ed.orig, n) : n.series && n.date !== n.series)) {
+      var orig = ed.orig, k = n.date, gone = isEmpty(n);
+      done.then(function () {
+        showUndo(orig ? (gone ? T('Note deleted.', 'Notatet er slettet.') : T('Note changed.', 'Notatet er endret.')) : T('Day changed.', 'Dagen er endret.'),
+          function () { putBack([k], [orig]); });
+      });
+    }
+    Array.prototype.forEach.call(ed.box.querySelectorAll('img'), function (i) { URL.revokeObjectURL(i.src); });
+    ed.box.remove();
+  }
+
+  // ---------- Undo: put notes back as they were ----------
+  function copyNote0(n) {
+    var c = { date: n.date, text: n.text || '', color: n.color || '', images: (n.images || []).slice(), updated: n.updated || 0 };
+    if (n.endDate) c.endDate = n.endDate;
+    if (n.repeat) c.repeat = JSON.parse(JSON.stringify(n.repeat));
+    if (n.series) c.series = n.series;
+    return c;
+  }
+  function changed(a, n) {
+    var ai = a.images || [], ni = n.images || [];
+    return a.text !== n.text || (a.color || '') !== (n.color || '') || (a.endDate || '') !== (n.endDate || '') ||
+      JSON.stringify(a.repeat || null) !== JSON.stringify(n.repeat || null) ||
+      ai.length !== ni.length || ai.some(function (b, i) { return b !== ni[i]; });
+  }
+  // The records of these keys now, and a function that puts them back (null = no note there)
+  function snapshot(keys) {
+    return Promise.all(keys.map(getNote)).then(function (recs) {
+      recs = recs.map(function (r) { return r ? copyNote0(r) : null; });
+      return function () { return putBack(keys, recs); };
+    });
+  }
+  function putBack(keys, recs) {
+    markDeleted(keys.filter(function (k, i) { return !recs[i]; }));
+    var now = Date.now();   // put back now: newer than the change it undoes, also on other devices
+    return tx('readwrite', function (s) { keys.forEach(function (k, i) { if (recs[i]) { recs[i].updated = now; s.put(recs[i]); } else s.delete(k); }); })
+      .then(getAll).then(function (all) {
+        index = {}; all.forEach(remember); rebuildCover(); deps.render();
+        if (tools && tools.list.offsetParent && tools.onRestored) tools.onRestored(); else refreshList();
+      }).catch(function (e) { if (window.console) console.error(e); });
+  }
+
+  // Next to the day on a PC, at the top of the screen on a phone (room for the keyboard)
+  function position(box, cell) { place(box, cell, false); }
+  function place(box, cell, small) {
+    var vw = window.innerWidth, vh = window.innerHeight;
+    if (!small && (deps.isTouch() || vw < 420)) {
+      box.style.left = Math.max(8, (vw - box.offsetWidth) / 2) + 'px';
+      box.style.top = '8px';
+      return;
+    }
+    var r = cell.getBoundingClientRect();
+    if (small) {   // under the day (above if no room), so the days beside it stay clickable
+      var t = r.bottom + 4;
+      if (t + box.offsetHeight > vh - 4) t = r.top - box.offsetHeight - 4;
+      box.style.left = Math.max(4, Math.min(vw - box.offsetWidth - 4, r.left)) + 'px';
+      box.style.top = Math.max(4, t) + 'px';
+      return;
+    }
+    var left = r.right + 6, top = r.top;
+    if (left + box.offsetWidth > vw - 4) left = r.left - box.offsetWidth - 6;
+    if (left < 4) left = Math.max(4, Math.min(vw - box.offsetWidth - 4, r.left));
+    if (top + box.offsetHeight > vh - 4) top = Math.max(4, vh - box.offsetHeight - 4);
+    box.style.left = left + 'px';
+    box.style.top = top + 'px';
+  }
+
+  function showImage(blob) {
+    var cover = el('div', 'noteImageView');
+    var img = el('img'); img.src = URL.createObjectURL(blob);
+    cover.appendChild(img);
+    cover.addEventListener('click', function () { URL.revokeObjectURL(img.src); cover.remove(); });
+    document.body.appendChild(cover);
+  }
+
+  // =====================================================================================
+  // List of all notes (Settings → Notes)
+  // =====================================================================================
+
+  // ---------- Notes page: search, color filter and Excel export ----------
+  // Live search: notes whose text contains what is typed (any case). Color filter: none checked = all colors;
+  // '' stands for notes without a color. Both apply together. Kept while the app is open.
+  // Pictures: '' = all notes, 'with' = only notes with pictures, 'without' = only notes without (one button, click to step).
+  // cal: the calendar shows only the notes that match too (the calendar button).
+  var filter = { q: '', colors: [], pics: '', cal: false };
+  function matches(k) {
+    var n = index[k], q = filter.q.trim().toLowerCase();
+    if (!n) return false;
+    if (filter.colors.length && filter.colors.indexOf(n.color || '') < 0) return false;
+    if (filter.pics && (filter.pics === 'with') !== !!n.images) return false;
+    return !q || n.text.toLowerCase().indexOf(q) >= 0;
+  }
+  function filteredKeys() { return Object.keys(index).sort().filter(matches); }
+
+  var tools = null;   // { search, filterBtn, filterMenu, picsBtn, exportBtn, list, empty }
+  function listTools(t) {
+    tools = t;
+    t.search.addEventListener('input', function () { filter.q = t.search.value; refreshList(); });
+    t.filterBtn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      t.colorsMenu.classList.add('hidden'); t.backupMenu.classList.add('hidden');
+      if (t.filterMenu.classList.contains('hidden')) { fillFilterMenu(); t.filterMenu.classList.remove('hidden'); }
+      else t.filterMenu.classList.add('hidden');
+    });
+    t.filterMenu.addEventListener('click', function (e) { e.stopPropagation(); });
+    document.addEventListener('click', function () { t.filterMenu.classList.add('hidden'); });
+    t.picsBtn.addEventListener('click', function () {
+      filter.pics = { '': 'with', 'with': 'without', 'without': '' }[filter.pics];
+      refreshList();
+    });
+    t.calBtn.addEventListener('click', function () { filter.cal = !filter.cal; refreshList(); });
+    t.exportBtn.addEventListener('click', exportList);
+    // One button for the backup file, with a small menu: back up or restore
+    t.backupBtn.title = T('Backup file', 'Sikkerhetskopi');
+    t.backupBtn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      t.filterMenu.classList.add('hidden'); t.colorsMenu.classList.add('hidden');
+      if (t.backupMenu.classList.contains('hidden')) { fillBackupMenu(); t.backupMenu.classList.remove('hidden'); }
+      else t.backupMenu.classList.add('hidden');
+    });
+    t.backupMenu.addEventListener('click', function (e) { e.stopPropagation(); });
+    document.addEventListener('click', function () { t.backupMenu.classList.add('hidden'); });
+    // The gear: how many weeks back notes are kept
+    t.keepBtn.title = T('How long notes are kept', 'Hvor lenge notater tas vare på');
+    t.keepBtn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      t.filterMenu.classList.add('hidden'); t.colorsMenu.classList.add('hidden'); t.backupMenu.classList.add('hidden');
+      if (t.keepMenu.classList.contains('hidden')) { fillKeepMenu(); t.keepMenu.classList.remove('hidden'); t.keepMenu.querySelector('input').focus(); }
+      else t.keepMenu.classList.add('hidden');
+    });
+    t.keepMenu.addEventListener('click', function (e) { e.stopPropagation(); });
+    document.addEventListener('click', function () { t.keepMenu.classList.add('hidden'); });
+    t.restoreFile.addEventListener('change', function () {
+      var f = t.restoreFile.files && t.restoreFile.files[0];
+      t.restoreFile.value = '';
+      if (f) restore(f).then(function () { if (t.onRestored) t.onRestored(); });
+    });
+    // Color names: a small menu with the numbered colors and a name field for each
+    t.colorsBtn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      t.filterMenu.classList.add('hidden'); t.backupMenu.classList.add('hidden');
+      if (t.colorsMenu.classList.contains('hidden')) { fillColorsMenu(); t.colorsMenu.classList.remove('hidden'); }
+      else t.colorsMenu.classList.add('hidden');
+    });
+    t.colorsMenu.addEventListener('click', function (e) { e.stopPropagation(); });
+    document.addEventListener('click', function () {
+      if (t.colorsMenu.classList.contains('hidden')) return;
+      t.colorsMenu.classList.add('hidden');
+      refreshList();
+    });
+  }
+  function fillFilterMenu() {
+    var m = tools.filterMenu;
+    m.innerHTML = '';
+    function row(label, dotHex, on, plain, onClick, colorId) {
+      var r = el('button', 'nfRow' + (on ? ' on' : ''));
+      r.appendChild(el('span', 'nfCheck', on ? '✓' : ''));
+      if (dotHex !== null) r.appendChild(numberDot(plain ? '' : colorId));
+      r.appendChild(el('span', '', label));
+      r.addEventListener('click', function () { onClick(); fillFilterMenu(); refreshList(); });
+      m.appendChild(r);
+    }
+    row(T('All colors', 'Alle farger'), null, !filter.colors.length, false, function () { filter.colors = []; });
+    COLORS.concat([{ id: '', en: 'No color', no: 'Uten farge' }]).forEach(function (c) {
+      var on = filter.colors.indexOf(c.id) >= 0;
+      row(colorLabel(c.id), c.hex || '', on, !c.id, function () {
+        if (on) filter.colors = filter.colors.filter(function (x) { return x !== c.id; });
+        else filter.colors = filter.colors.concat([c.id]);
+      }, c.id);
+    });
+  }
+  function fillColorsMenu() {
+    var m = tools.colorsMenu;
+    m.innerHTML = '';
+    m.appendChild(el('div', 'ncTitle', T('Name the colors', 'Gi fargene navn')));
+    [''].concat(COLORS.map(function (c) { return c.id; })).forEach(function (id) {
+      var r = el('label', 'ncRow');
+      r.appendChild(numberDot(id));
+      var input = el('input'); input.type = 'text'; input.maxLength = 40;
+      input.placeholder = colorDefault(id); input.value = names[id || 'none'] || '';
+      input.addEventListener('input', function () {
+        if (input.value.trim()) names[id || 'none'] = input.value; else delete names[id || 'none'];
+        saveNames();
+      });
+      input.addEventListener('keydown', function (e) { if (e.key === 'Enter') { tools.colorsMenu.classList.add('hidden'); refreshList(); } });
+      r.appendChild(input);
+      m.appendChild(r);
+    });
+  }
+  function refreshList() { if (tools) fillList(tools.list, tools.empty); if (filter.cal || calShown) { calShown = filter.cal; deps.render(); } }
+  var calShown = false;   // the calendar was last drawn with the filter on
+
+  // Excel: the list as shown (search and color filter), with the pictures placed in their own cells
+  function exportList() {
+    var keys = filteredKeys();
+    if (!keys.length) return;
+    var save = window.QuickCalXlsx.target('QuickCal-' + T('notes', 'notater') + '-' + key(new Date()) + '.xlsx');
+    save.catch(function () {});   // cancelled: nothing to do
+    tools.exportBtn.disabled = true;
+    getAll().then(function (all) {
+      var byDate = {};
+      all.forEach(function (n) { byDate[n.date] = n; });
+      var maxPics = 0;
+      keys.forEach(function (k) { maxPics = Math.max(maxPics, ((byDate[k] && byDate[k].images) || []).length); });
+      var head = [T('Date', 'Dato'), T('To', 'Til'), T('Day', 'Dag'), T('Week', 'Uke'), T('No.', 'Nr'), T('Color', 'Farge'), T('Note', 'Notat'), T('Repeats', 'Gjentas')];
+      for (var i = 0; i < maxPics; i++) head.push(T('Picture ', 'Bilde ') + (i + 1));
+      var rows = [head], images = [], rowHeights = {}, jobs = [];
+      keys.forEach(function (k, r) {
+        var n = byDate[k] || { text: index[k].text, color: index[k].color, images: [] }, d = parseKey(k);
+        var row = [d, n.endDate ? parseKey(n.endDate) : '', cap(d.toLocaleDateString(lang(), { weekday: 'long' })), deps.isoWeek(d), colorNo(n.color), colorLabel(n.color), (n.text || '').trim(), summary(k, n.repeat)];
+        for (var j = 0; j < maxPics; j++) row.push('');
+        rows.push(row);
+        (n.images || []).forEach(function (blob, j) {
+          rowHeights[r + 1] = 90;
+          jobs.push(picture(blob).then(function (p) {
+            if (p) images.push({ row: r + 1, col: 8 + j, data: p.data, type: p.type, w: p.w, h: p.h, name: k + ' ' + (j + 1) });
+          }));
+        });
+      });
+      return Promise.all(jobs).then(function () {
+        var widths = [10, 10, 10, 6, 5, 14, 50, 24];
+        for (var i = 0; i < maxPics; i++) widths.push(22);
+        var blob = window.QuickCalXlsx.write(rows, { sheet: T('Notes', 'Notater'), widths: widths, wrap: [6, 7], images: images, rowHeights: rowHeights });
+        return save.then(function (write) { return write(blob); });
+      });
+    }).catch(function (e) { if (window.console && !(e && e.name === 'AbortError')) console.error(e); })
+      .then(function () { tools.exportBtn.disabled = !filteredKeys().length; });
+  }
+  function picture(blob) {
+    return Promise.all([blob.arrayBuffer(), createImageBitmap(blob)]).then(function (r) {
+      var p = { data: new Uint8Array(r[0]), type: blob.type === 'image/png' ? 'image/png' : 'image/jpeg', w: r[1].width, h: r[1].height };
+      if (r[1].close) r[1].close();
+      return p;
+    }).catch(function () { return null; });
+  }
+  function lang() { return T('en', 'nb'); }
+  function cap(t) { return t.charAt(0).toUpperCase() + t.slice(1); }
+
+  function fillList(listEl, emptyEl) {
+    listEl.innerHTML = '';
+    var all = Object.keys(index).length, keys = filteredKeys();
+    emptyEl.classList.toggle('hidden', all > 0);
+    if (tools) {
+      var active = filter.colors.length > 0;
+      tools.filterBtn.classList.toggle('active', active);
+      tools.filterBtn.querySelector('.nfCount').textContent = active ? String(filter.colors.length) : '';
+      tools.picsBtn.className = 'notesFilterBtn notesPicsBtn' + (filter.pics ? ' active pics-' + filter.pics : '');
+      tools.picsBtn.title = filter.pics === 'with' ? T('Showing notes with pictures. Click: without pictures', 'Viser notater med bilde. Klikk: uten bilde')
+        : filter.pics === 'without' ? T('Showing notes without pictures. Click: all notes', 'Viser notater uten bilde. Klikk: alle notater')
+        : T('Filter on pictures. Click: only notes with pictures', 'Filtrer på bilder. Klikk: bare notater med bilde');
+      tools.exportBtn.disabled = !keys.length;
+      tools.calBtn.classList.toggle('active', filter.cal);
+      tools.calBtn.title = filter.cal
+        ? T('The calendar shows only the notes that match the search and filter. Click: show all notes', 'Kalenderen viser bare notatene som passer søket og filteret. Klikk: vis alle notatene')
+        : T('Show only the notes that match the search and filter in the calendar too', 'Vis bare notatene som passer søket og filteret i kalenderen også');
+    }
+    document.documentElement.classList.toggle('notesFiltered', !!(filter.cal && (filter.q.trim() || filter.colors.length || filter.pics)));
+    showBackupHint();
+    if (all && !keys.length) listEl.appendChild(el('div', 'noteNoMatch', T('No notes match.', 'Ingen notater passer.')));
+    // By month, with a heading for each. A repeating note shows once in each month it falls in, with its
+    // days there on one line. Series without an end are shown only up to the last month with an ordinary
+    // note, and at least 3 months ahead, so the list never runs on forever.
+    // The window is set from all notes, not only those that match the search, so it stays the same while searching
+    var allKeys = Object.keys(index);
+    var today = key(new Date()), monthStart = today.slice(0, 8) + '01';
+    var lo = monthStart;   // from the oldest month with a note (a series counts from its first day)
+    allKeys.forEach(function (k) { var d0 = dayOf(k).slice(0, 8) + '01'; if (d0 < lo) lo = d0; });
+    if (lo < oldestKept()) lo = oldestKept();
+    var t = new Date(), hi = key(new Date(t.getFullYear(), t.getMonth() + 4, 0));   // end of the month 3 months ahead
+    allKeys.forEach(function (k) {   // to the end of the month of the last ordinary note
+      if (index[k].repeat) return;
+      var e = parseKey(index[k].end || dayOf(k)), m = key(new Date(e.getFullYear(), e.getMonth() + 1, 0));
+      if (m > hi) hi = m;
+    });
+    var entries = [];
+    keys.forEach(function (k) {
+      if (!index[k].repeat) { entries.push({ k: k, day: dayOf(k), sort: k }); return; }
+      var byMonth = {};
+      occurrences(k, index[k].repeat, lo, hi).forEach(function (o) {
+        if (exc[k + '|' + o]) return;   // a day the series has a changed note of its own for
+        (byMonth[o.slice(0, 7)] = byMonth[o.slice(0, 7)] || []).push(o);
+      });
+      // A series that starts after the window still shows, in its first month
+      if (!Object.keys(byMonth).length) { var f = occurrences(k, index[k].repeat, dayOf(k), key(new Date(+parseKey(dayOf(k)) + 400 * 864e5))).filter(function (o) { return !exc[k + '|' + o]; }); if (f.length) byMonth[f[0].slice(0, 7)] = f.filter(function (o) { return o.slice(0, 7) === f[0].slice(0, 7); }); }
+      Object.keys(byMonth).forEach(function (m) { entries.push({ k: k, day: byMonth[m][0], sort: byMonth[m][0] + '~' + k, dates: byMonth[m] }); });
+    });
+    entries.sort(function (a, b) { return a.sort < b.sort ? -1 : a.sort > b.sort ? 1 : 0; });
+    var month = '';
+    entries.forEach(function (en) {
+      if (en.day.slice(0, 7) !== month) {
+        month = en.day.slice(0, 7);
+        listEl.appendChild(el('div', 'noteMonth', cap(parseKey(month + '-01').toLocaleDateString(lang(), { month: 'long', year: 'numeric' }))));
+      }
+      listEl.appendChild(noteRow(en, listEl, emptyEl));
+    });
+  }
+  function noteRow(en, listEl, emptyEl) {
+      var k = en.k, n = index[k], d = parseKey(k);
+      var row = el('div', 'noteRow');
+      var dot = numberDot(n.color);
+      dot.title = colorLabel(n.color);
+      row.appendChild(dot);
+      var dateCell = el('span', 'noteDate', deps.dayTitle(d, true));
+      if (en.dates) {
+        dateCell.textContent = '↻ ' + deps.dayTitle(parseKey(en.dates[0]), true);
+        dateCell.title = summary(k, n.repeat);
+      }
+      if (n.end && !n.repeat) { var e = parseKey(n.end); dateCell.appendChild(el('span', 'noteEnd', ' → ' + e.getDate() + '.' + (e.getMonth() + 1) + '.')); }
+      row.appendChild(dateCell);
+      var all = n.text.replace(/^\s*\n|\s+$/g, '') || (n.images ? T('(picture)', '(bilde)') : '');   // the whole note, every line
+      var body = el('span', 'noteFirst', all);
+      row.appendChild(body);
+      // A repeating note: its days in this month (a count when there are many)
+      if (en.dates) {
+        body.appendChild(el('span', 'noteDays', (en.dates.length > 8
+          ? summary(k, n.repeat) + ' (' + en.dates.length + ' ' + T('days', 'dager') + ')'
+          : en.dates.map(function (x) { return parseKey(x).getDate() + '.'; }).join(', '))));
+      }
+      if (n.images) addThumbs(body, k);
+      var tasks = n.text.match(/^[☐☑]/gm);
+      // Checklist and pictures in their own column, so the bin is always in the same place at the right
+      var meta = el('span', 'noteMeta');
+      if (tasks) meta.appendChild(el('span', 'noteTasks', '☑ ' + tasks.filter(function (t) { return t === '☑'; }).length + '/' + tasks.length));
+      if (n.images) meta.appendChild(el('span', 'noteImgs', '🖼' + (n.images > 1 ? n.images : '')));
+      row.appendChild(meta);
+      var rm = el('button', 'noteRemove'); rm.title = T('Delete note', 'Slett notat');
+      rm.innerHTML = BIN_SVG;
+      rm.addEventListener('click', function (e) {
+        e.stopPropagation();
+        snapshot([k]).then(function (undo) {
+          return save({ date: k, text: '', color: '', images: [] }).then(function () {
+            deps.render(); fillList(listEl, emptyEl);
+            showUndo(T('Note deleted.', 'Notatet er slettet.'), undo);
+          });
+        });
+      });
+      row.appendChild(rm);
+      row.addEventListener('click', function () { deps.showDate(parseKey(en.day), k); });   // a series: its first day in this month
+      return row;
+  }
+
+  // Small pictures under the text, all the same size (shown only when the list fills the window, see styles.css).
+  // A click on one goes on to the row: the note opens in the calendar, pictures at their own size.
+  function addThumbs(body, k) {
+    getNote(k).then(function (n) {
+      if (!n || !n.images || !n.images.length) return;
+      var box = el('span', 'noteThumbs');
+      n.images.forEach(function (b) {
+        var img = el('img');
+        img.src = URL.createObjectURL(b);
+        img.onload = img.onerror = function () { URL.revokeObjectURL(img.src); };
+        box.appendChild(img);
+      });
+      body.appendChild(box);
+    }).catch(function () {});
+  }
+
+  // ---------- Backup: all notes, pictures and color names in one file, and restore from it ----------
+  // A .json file rather than Excel: it brings everything back exactly as it was (pictures, colors, several
+  // days, checklists), and nobody is tempted to edit it. The Excel export is for reading and sharing.
+  var BACKUP_KIND = 'quickcal-notes-backup', LAST_BACKUP_KEY = 'quickcal.lastNotesBackup';
+  function blobToData(b) {
+    return new Promise(function (resolve) {
+      var r = new FileReader();
+      r.onload = function () { resolve(r.result); };
+      r.onerror = function () { resolve(null); };
+      r.readAsDataURL(b);
+    });
+  }
+  function dataToBlob(d) { return fetch(d).then(function (r) { return r.blob(); }).catch(function () { return null; }); }
+  function lastBackup() { try { return localStorage.getItem(LAST_BACKUP_KEY) || ''; } catch (e) { return ''; } }
+  // The arrows of the backup button: down into the tray (back up) and up out of it (restore)
+  var BACKUP_SVG = '<svg viewBox="0 0 24 24"><path d="M4 14v5.5h16V14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M12 3.5v11m-4.5-4.5 4.5 4.5 4.5-4.5" fill="none" stroke="#143275" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  var RESTORE_SVG = '<svg viewBox="0 0 24 24"><path d="M4 14v5.5h16V14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M12 15V4m-4.5 4.5L12 4l4.5 4.5" fill="none" stroke="#2e9e5b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  function fillKeepMenu() {
+    var m = tools.keepMenu;
+    m.innerHTML = '';
+    var line = el('label', 'kmLine');
+    line.appendChild(el('span', 'kmTitle', T('Keep notes', 'Ta vare på notater')));
+    var input = el('input', 'kmWeeks'); input.type = 'number'; input.min = 0; input.max = KEEP_MAX; input.step = 1; input.value = keepWeeks;
+    line.appendChild(input);
+    line.appendChild(el('span', '', T(' weeks back', ' uker bakover')));
+    var ok = el('button', 'btn inline kmSave', T('Save', 'Lagre'));
+    line.appendChild(ok);
+    m.appendChild(line);
+    var info = el('div', 'kmInfo');
+    m.appendChild(info);
+    function weeks() { return cleanWeeks(input.value === '' ? keepWeeks : input.value); }
+    function showInfo() {
+      var w = weeks(), opt = { weekday: 'short', day: 'numeric', month: 'short' };
+      var from = parseKey(oldestKept(w)).toLocaleDateString(lang(), opt);
+      info.innerHTML = '';
+      info.appendChild(el('p', 'kmMain', T('Notes older than ' + from + ' will be deleted.', 'Notater eldre enn ' + from + ' vil slettes.')));
+      [T('Weeks are counted from Monday of this week.', 'Ukene telles fra mandag inneværende uke.'),
+       T('0 deletes all notes older than this week, 1 keeps notes up to and including last week, and so on.',
+         '0 vil slette alle notater eldre enn inneværende uke, 1 vil ta vare på notater til og med forrige uke, og så videre.'),
+       T('Notes ahead in time and repeating notes still running are never deleted.', 'Notater frem i tid og gjentakelser som pågår, slettes aldri.'),
+       T('Standard: 12 weeks.', 'Standard: 12 uker.')].forEach(function (line) { info.appendChild(el('p', '', line)); });
+    }
+    function apply() {
+      var w = weeks();
+      if (w === keepWeeks) { m.classList.add('hidden'); return; }
+      var limit = oldestKept(w);
+      getAll().then(function (all) {
+        var gone = all.filter(function (n) { return expired(n, limit); }).length;
+        if (gone && !confirm(T(gone + (gone === 1 ? ' note is' : ' notes are') + ' older than that and will be deleted now. This cannot be undone.',
+                               gone + (gone === 1 ? ' notat er' : ' notater er') + ' eldre enn det og slettes nå. Dette kan ikke angres.') +
+                             (syncState() !== 'off' ? T(' It also applies on your other devices that sync with Dropbox.', ' Det gjelder også på de andre enhetene dine som synkroniserer med Dropbox.') : ''))) return;
+        saveKeep(w);
+        m.classList.add('hidden');
+        return removeOld().then(function () { refreshList(); });
+      });
+    }
+    input.addEventListener('input', showInfo);
+    input.addEventListener('keydown', function (e) { if (e.key === 'Enter') apply(); if (e.key === 'Escape') m.classList.add('hidden'); });
+    ok.addEventListener('click', apply);
+    showInfo();
+  }
+  function fillBackupMenu() {
+    var m = tools.backupMenu, last = lastBackup();
+    m.innerHTML = '';
+    function row(icon, label, sub, on, fn) {
+      var r = el('button', 'nfRow bmRow');
+      r.disabled = !on;
+      var i = el('span', 'bmIcon'); i.innerHTML = icon;
+      r.appendChild(i);
+      var text = el('span', '', label);
+      if (sub) text.appendChild(el('span', 'bmSub', ' ' + sub));
+      r.appendChild(text);
+      r.addEventListener('click', function () { m.classList.add('hidden'); fn(); });
+      m.appendChild(r);
+    }
+    row(BACKUP_SVG, T('Back up to a file', 'Ta sikkerhetskopi'), last ? '(' + T('last ', 'sist ') + parseKey(last).getDate() + '.' + (parseKey(last).getMonth() + 1) + '.)' : '',
+        Object.keys(index).length > 0, backup);
+    row(RESTORE_SVG, T('Restore from a backup', 'Gjenopprett fra sikkerhetskopi'), '', available, function () { tools.restoreFile.click(); });
+  }
+  function backup() {
+    var save = window.QuickCalXlsx.target('QuickCal-' + T('notes-backup', 'notater-sikkerhetskopi') + '-' + key(new Date()) + '.json',
+      [{ description: 'QuickCal', accept: { 'application/json': ['.json'] } }]);
+    save.catch(function () {});
+    getAll().then(function (all) {
+      return Promise.all(all.map(function (n) {
+        return Promise.all((n.images || []).map(blobToData)).then(function (imgs) {
+          var out = { date: n.date, text: n.text || '', color: n.color || '', updated: n.updated || 0 };
+          if (n.endDate) out.endDate = n.endDate;
+          if (n.repeat) out.repeat = n.repeat;
+          out.images = imgs.filter(Boolean);
+          return out;
+        });
+      })).then(function (list) {
+        var file = { kind: BACKUP_KIND, version: 1, created: new Date().toISOString(), colorNames: names, notes: list };
+        var blob = new Blob([JSON.stringify(file, null, 1)], { type: 'application/json' });
+        return save.then(function (write) { return write(blob); });
+      });
+    }).then(function () {
+      try { localStorage.setItem(LAST_BACKUP_KEY, key(new Date())); } catch (e) { /* storage blocked */ }
+      showBackupHint();
+    }).catch(function (e) { if (window.console && !(e && e.name === 'AbortError')) console.error(e); });
+  }
+  // A small line next to the buttons: synced with Dropbox, or a reminder that notes live only in this browser
+  function showBackupHint() {
+    var h = tools && tools.backupHint; if (!h) return;
+    // The icons are small copies of the buttons' icons (a text arrow is too thin in Segoe UI)
+    function icon(btn) { var i = el('span', 'bhIcon'); i.innerHTML = btn.querySelector('svg').outerHTML; return i; }
+    function text(t) { h.appendChild(document.createTextNode(t)); }
+    var state = syncState(), synced = lastSynced();
+    h.innerHTML = '';
+    if (state === 'lost') {
+      text(T('No longer connected to Dropbox', 'Ikke lenger koblet til Dropbox') + ' ');
+      h.appendChild(icon(tools.dropboxBtn));
+      text('. ' + T('The notes are safe here.', 'Notatene er trygge her.'));
+      h.classList.remove('hidden');
+      return;
+    }
+    if (state !== 'off') {
+      text(T('Synced with Dropbox', 'Synkes med Dropbox') + ' ');
+      h.appendChild(icon(tools.dropboxBtn));
+      text(state === 'busy' ? ' …'
+        : state === 'offline' ? ' ' + T('(waiting for the network)', '(venter på nett)')
+        : state === 'error' ? ' ' + T('(not right now: ', '(ikke akkurat nå: ') + syncError + ')'
+        : synced ? ' (' + T('last ', 'sist ') + new Date(synced).toLocaleTimeString(T('en', 'nb'), { hour: '2-digit', minute: '2-digit' }) + ')' : '');
+      h.classList.remove('hidden');
+      return;
+    }
+    text(T('Notes are only stored here. Sync with', 'Notatene lagres bare her. Synk med') + ' ');
+    h.appendChild(icon(tools.dropboxBtn));
+    text(' ' + T('or back up with', 'eller ta sikkerhetskopi med') + ' ');
+    h.appendChild(icon(tools.backupBtn));
+    h.classList.toggle('hidden', !Object.keys(index).length);
+  }
+  // Notes in the file replace notes that start on the same day; all other notes are kept.
+  function restore(file) {
+    var bad = T('This file is not a QuickCal notes backup.', 'Denne filen er ikke en sikkerhetskopi av QuickCal-notater.');
+    return file.text().then(function (text) {
+      var data;
+      try { data = JSON.parse(text); } catch (e) { data = null; }
+      if (!data || data.kind !== BACKUP_KIND || !Array.isArray(data.notes)) { alert(bad); return; }
+      var valid = data.notes.filter(function (n) { return n && /^\d{4}-\d\d-\d\db?$/.test(n.date) && typeof n.text === 'string'; });
+      var keep = valid.filter(function (n) { return !expired(n); });
+      var old = valid.length - keep.length;
+      if (!keep.length) {
+        alert(old ? T('All notes in the backup are older than ' + keepText() + ' back, so none were restored.',
+                      'Alle notatene i sikkerhetskopien er eldre enn ' + keepText() + ' bakover, så ingen ble gjenopprettet.')
+                  : T('The backup has no notes.', 'Sikkerhetskopien har ingen notater.'));
+        return;
+      }
+      var created = data.created ? new Date(data.created) : null;
+      if (!confirm(T('Restore ' + keep.length + ' notes from the backup' + (created ? ' of ' + created.toLocaleDateString('en') : '') + '?\n\nNotes on the same day are replaced, all other notes are kept.',
+                     'Gjenopprette ' + keep.length + ' notater fra sikkerhetskopien' + (created ? ' fra ' + created.toLocaleDateString('nb') : '') + '?\n\nNotater på samme dag blir erstattet, alle andre notater beholdes.'))) return;
+      return Promise.all(keep.map(function (n) {
+        return Promise.all((n.images || []).slice(0, MAX_IMAGES).map(dataToBlob)).then(function (blobs) {
+          var r = { date: n.date, text: n.text, color: colorHex(n.color) ? n.color : '', images: blobs.filter(Boolean), updated: Date.now() };
+          if (n.endDate && n.endDate > dayOf(n.date)) r.endDate = n.endDate;
+          if (n.repeat) r.repeat = n.repeat;
+          return r;
+        });
+      })).then(function (records) {
+        return tx('readwrite', function (s) { records.forEach(function (r) { s.put(r); }); });
+      }).then(function () {
+        if (data.colorNames && typeof data.colorNames === 'object') {
+          Object.keys(data.colorNames).forEach(function (k) { if (typeof data.colorNames[k] === 'string' && data.colorNames[k].trim()) names[k] = data.colorNames[k]; });
+          saveNames();
+        }
+        return getAll();
+      }).then(function (all) {
+        index = {}; all.forEach(remember); deps.render();
+        alert(T(keep.length + ' notes restored.', keep.length + ' notater er gjenopprettet.') +
+          (old ? ' ' + T(old + ' older than ' + keepText() + ' back were left out.', old + ' eldre enn ' + keepText() + ' bakover ble utelatt.') : ''));
+      });
+    }).catch(function (e) { if (window.console) console.error(e); alert(bad); });
+  }
+
+  // =====================================================================================
+  // Drag with the mouse: move a note to other days, or drag its first/last day's edge to change its length.
+  // Hand cursor over a note, ↔ at the outer edges. A drag starts after a few pixels, so a click stays a
+  // click. Dashed frame on the days it would cover (red if it cannot go there). Esc cancels. Repeating
+  // notes are not dragged (change them in the ↻ panel). An "Undo" button shows for a few seconds.
+  // Dragging an edge into another week copies the note to the same weekdays there (see target); Ctrl stretches it.
+  // =====================================================================================
+  var drag = null, hoverCell = null, swallowClick = false, undoBox = null;
+  function cellKey(cell) {
+    var p = (cell && cell.dataset.date || '').split('-');
+    return p.length === 3 ? key(new Date(+p[0], +p[1] - 1, +p[2])) : null;
+  }
+  function dayCell(target) { return target && target.closest ? target.closest('.cell.pick') : null; }
+  // What a press at this point of this cell would do: { mode: 'move'|'end'|'start', a: the note } or null.
+  // A day with two notes: the top half grabs the top note, the bottom half the bottom one.
+  function dragMode(cell, x, y) {
+    var dk = cellKey(cell); if (!dk) return null;
+    var pair = shownAt(dk), r = cell.getBoundingClientRect();
+    var a = pair[0] && pair[1] ? pair[y > r.top + r.height / 2 ? 1 : 0] : pair[0] || pair[1], n = a && index[a.k];
+    if (!n || n.repeat) return null;
+    var edge = Math.max(4, r.width * 0.2);
+    if (dk === a.e && x > r.right - edge) return { mode: 'end', a: a };
+    if (dk === a.s && x < r.left + edge) return { mode: 'start', a: a };
+    return { mode: 'move', a: a };
+  }
+  function setHover(cell, mode) {
+    if (hoverCell && hoverCell !== cell) hoverCell.style.cursor = '';
+    hoverCell = cell;
+    if (cell) cell.style.cursor = mode === 'move' ? 'grab' : mode ? 'ew-resize' : '';
+  }
+  function weekday(k) { return (parseKey(k).getDay() + 6) % 7; }   // Monday = 0
+  function mondayOf(k) { return addDays(k, -weekday(k)); }
+  var MAX_COPY_WEEKS = 26;
+  // Where the drag would put the note: blocks [{s, e}], the first is the note itself, any others are copies.
+  // Dragging an edge into another week copies the note to the same weekdays of each week in between
+  // (Mon-Thu dragged down two rows = Mon-Thu in three weeks). With Ctrl held it grows over every day instead.
+  function target(d, hk) {
+    var s = d.s, e = d.e, w0 = mondayOf(d.s), wk = mondayOf(hk), blocks = null;
+    if (d.mode !== 'move' && !d.ctrl && w0 === mondayOf(d.e) && wk !== w0) {   // either edge, up or down
+      var c0 = weekday(d.s), c1 = weekday(d.e);
+      if (d.mode === 'end') c1 = Math.max(c0, weekday(hk)); else c0 = Math.min(c1, weekday(hk));
+      var rows = Math.min(Math.abs(daysBetween(w0, wk)) / 7, MAX_COPY_WEEKS), step = wk > w0 ? 7 : -7;
+      blocks = [];
+      for (var i = 0; i <= rows; i++) blocks.push({ s: addDays(w0, i * step + c0), e: addDays(w0, i * step + c1) });
+      s = blocks[0].s; e = blocks[0].e;
+    } else {
+      if (d.mode === 'move') { var off = daysBetween(d.from, hk); s = addDays(d.s, off); e = addDays(d.e, off); }
+      else if (d.mode === 'end') e = hk < d.s ? d.s : hk;
+      else s = hk > d.e ? d.e : hk;
+      blocks = [{ s: s, e: e }];
+    }
+    // Each block goes in a free half of its days: the note's own half if it can, else the other one
+    var ok = daysBetween(s, e) < MAX_SPAN_DAYS;
+    blocks.forEach(function (b) {
+      var sl = ok ? freeSlot(b.s, b.e, d.k, slotOf(d.k)) : -1;
+      if (sl < 0) ok = false; else b.key = slotKey(b.s, sl);
+    });
+    return { s: s, e: e, blocks: blocks, ok: ok };
+  }
+  function clearPreview() {
+    Array.prototype.forEach.call(document.querySelectorAll('.cell.dropOk, .cell.dropBad'), function (c) { c.classList.remove('dropOk', 'dropBad'); });
+  }
+  function showPreview(t) {
+    clearPreview();
+    Array.prototype.forEach.call(document.querySelectorAll('.cell.pick'), function (c) {
+      var k = cellKey(c);
+      if (t.blocks.some(function (b) { return k >= b.s && k <= b.e; })) c.classList.add(t.ok ? 'dropOk' : 'dropBad');
+    });
+    document.documentElement.classList.toggle('noteDropBad', !t.ok);
+  }
+  function endDrag() {
+    clearPreview();
+    document.documentElement.classList.remove('noteDragging', 'noteResizing', 'noteDropBad');
+    drag = null;
+  }
+  function onPointerDown(e) {
+    if (e.pointerType !== 'mouse' || e.button !== 0 || editor || !available) return;
+    var cell = dayCell(e.target), m = cell && dragMode(cell, e.clientX, e.clientY);
+    if (!m) return;
+    var a = m.a;
+    drag = { mode: m.mode, k: a.k, s: a.s, e: a.e, from: cellKey(cell), x: e.clientX, y: e.clientY, active: false, t: null, ctrl: e.ctrlKey || e.metaKey };
+    e.preventDefault();   // no text selection while dragging
+  }
+  function onPointerMove(e) {
+    if (e.pointerType !== 'mouse') return;
+    if (!drag) {
+      var cell = dayCell(e.target);
+      var m = cell && !editor ? dragMode(cell, e.clientX, e.clientY) : null;
+      setHover(cell, m && m.mode);
+      return;
+    }
+    if (!drag.active) {
+      if (Math.abs(e.clientX - drag.x) + Math.abs(e.clientY - drag.y) < 6) return;
+      drag.active = true;
+      closePeek();
+      document.documentElement.classList.add(drag.mode === 'move' ? 'noteDragging' : 'noteResizing');
+    }
+    var over = dayCell(document.elementFromPoint(e.clientX, e.clientY)), hk = cellKey(over);
+    drag.ctrl = e.ctrlKey || e.metaKey;
+    if (!hk) return;
+    drag.hk = hk;
+    retarget();
+  }
+  function retarget() {
+    if (!drag || !drag.active || !drag.hk) return;
+    drag.t = target(drag, drag.hk);
+    showPreview(drag.t);
+  }
+  function onPointerUp(e) {
+    if (!drag || e.pointerType !== 'mouse') return;
+    var d = drag;
+    endDrag();
+    if (!d.active) return;   // just a click
+    swallowClick = true;     // the click that follows the drop must not open the small box
+    setTimeout(function () { swallowClick = false; }, 0);
+    if (!d.t || !d.t.ok) return;
+    if (d.t.blocks.length > 1) return copyNote(d.k, d.t.blocks);
+    if (d.t.blocks[0].key === d.k && d.t.e === d.e) return;
+    moveNote(d.k, d.t.blocks[0].key, d.t.e, d.mode === 'move' ? T('Note moved.', 'Notatet er flyttet.') : T('Note changed.', 'Notatet er endret.'));
+  }
+  // nk: the note's new key (first day and half)
+  function moveNote(k, nk, e, message) {
+    return getNote(k).then(function (n) {
+      if (!n) return;
+      var before = { date: n.date, endDate: n.endDate || '' };
+      return relocate(n, dayOf(nk), e, slotOf(nk)).then(function () {
+        showUndo(message, function () { relocate(n, dayOf(before.date), before.endDate || dayOf(before.date), slotOf(before.date)); });
+      });
+    }).catch(function (err) { if (window.console) console.error(err); });
+  }
+  // The note goes on blocks[0] and a copy (text, colour, pictures) on each of the other blocks
+  function copyNote(k, blocks) {
+    return getNote(k).then(function (n) {
+      if (!n) return;
+      var before = { date: n.date, end: n.endDate || dayOf(n.date) }, copies = blocks.slice(1);
+      return relocate(n, blocks[0].s, blocks[0].e, slotOf(blocks[0].key)).then(function () {
+        return Promise.all(copies.map(function (b) {
+          var c = { date: b.key, text: n.text, color: n.color, images: (n.images || []).slice() };
+          if (b.e > b.s) c.endDate = b.e;
+          return save(c);
+        }));
+      }).then(function () {
+        deps.render();
+        showUndo(T('Note copied to ' + copies.length + (copies.length === 1 ? ' more week.' : ' more weeks.'),
+                   'Notatet er kopiert til ' + copies.length + (copies.length === 1 ? ' uke til.' : ' uker til.')), function () {
+          Promise.all(copies.map(function (b) { delete index[b.key]; return deleteNote(b.key); }))
+            .then(function () { rebuildCover(); return relocate(n, dayOf(before.date), before.end, slotOf(before.date)); });
+        });
+      });
+    }).catch(function (err) { if (window.console) console.error(err); deps.render(); });
+  }
+  // Stores note n on days s..e in half sl (default: the half it is in). Its key may change with it.
+  function relocate(n, s, e, sl) {
+    var old = n.date;
+    n.date = slotKey(s, sl == null ? slotOf(old) : sl);
+    if (e > s) n.endDate = e; else delete n.endDate;
+    var gone = old !== n.date ? deleteNote(old).then(function () { delete index[old]; }) : Promise.resolve();
+    return gone.then(function () { return save(n); }).then(deps.render, function () { deps.render(); });
+  }
+  function showUndo(message, undo) {
+    if (undoBox) undoBox.remove();
+    // A normal-size window: just a small button in the top right corner (the message is its tooltip),
+    // so it hides little of the calendar. Maximized: the message and the button at the bottom.
+    var small = !(deps.isLarge && deps.isLarge());
+    var box = el('div', 'noteUndo' + (small ? ' small' : ''));
+    if (!small) box.appendChild(el('span', '', message));
+    var b = el('button', '', (small ? '↶ ' : '') + T('Undo', 'Angre'));
+    if (small) b.title = message;
+    b.addEventListener('click', function (ev) { ev.stopPropagation(); box.remove(); undoBox = null; undo(); });
+    box.appendChild(b);
+    document.body.appendChild(box);
+    undoBox = box;
+    setTimeout(function () { if (undoBox === box) { box.remove(); undoBox = null; } }, 6000);
+  }
+  function setupDrag() {
+    document.addEventListener('pointerdown', onPointerDown);
+    document.addEventListener('pointermove', onPointerMove);
+    document.addEventListener('pointerup', onPointerUp);
+    window.addEventListener('blur', function () { if (drag) endDrag(); });
+    document.addEventListener('keydown', function (e) {
+      if (drag && e.key === 'Escape') { e.stopPropagation(); e.preventDefault(); endDrag(); }
+      else if (drag && (e.key === 'Control' || e.key === 'Meta')) { drag.ctrl = true; retarget(); }
+    }, true);
+    document.addEventListener('keyup', function (e) {
+      if (drag && (e.key === 'Control' || e.key === 'Meta')) { drag.ctrl = false; retarget(); }
+    }, true);
+    document.addEventListener('click', function (e) {
+      if (swallowClick) { swallowClick = false; e.stopPropagation(); e.preventDefault(); }
+    }, true);
+  }
+
+  function deleteAll() {
+    return getAll().then(function (all) {
+      var recs = all.map(copyNote0), keys = all.map(function (n) { return n.date; });
+      markDeleted(keys);
+      return tx('readwrite', function (s) { s.clear(); }).then(function () {
+        index = {}; rebuildCover(); deps.render();
+        if (recs.length) showUndo(T('All notes deleted.', 'Alle notatene er slettet.'), function () { putBack(keys, recs); });
+      });
+    });
+  }
+
+  // =====================================================================================
+  // Sync with Dropbox (dropbox.js). QuickCal's folder in the user's Dropbox holds notes.json (every note,
+  // with the names of its pictures) and one file per picture, named by its content, so each picture is
+  // sent only once. Each device merges note by note: the latest change wins. A deleted note leaves a
+  // mark (which and when) so the delete reaches the other devices too. The notes in this browser stay
+  // the real copy: without Dropbox, or offline, everything works as before.
+  // =====================================================================================
+  var DELETED_KEY = 'quickcal.notesDeleted', SYNCED_KEY = 'quickcal.notesSynced';
+  var SYNC_FILE = '/notes.json', SYNC_KIND = 'quickcal-notes-sync', KEEP_MARKS_DAYS = 120;
+  var deleted = {};
+  try { deleted = JSON.parse(localStorage.getItem(DELETED_KEY)) || {}; } catch (e) { deleted = {}; }
+  var applying = false;      // writing what came from Dropbox: not a change to send back
+  var syncTimer = null, syncing = null, syncAgain = false, syncError = '', offline = false, listeners = [];
+  function DBX() { return window.QuickCalDropbox && window.QuickCalDropbox.connected() ? window.QuickCalDropbox : null; }
+  function syncHere() { return available && !/[?&]pip(=|&|$)/.test(location.search); }   // not in the "Always on top" window
+  function markDeleted(keys) {
+    if (!keys.length) return;
+    var t = Date.now();
+    keys.forEach(function (k) { deleted[k] = t; });
+    saveMarks();
+  }
+  function saveMarks() {
+    var old = Date.now() - KEEP_MARKS_DAYS * 86400000;
+    Object.keys(deleted).forEach(function (k) { if (deleted[k] < old) delete deleted[k]; });
+    try { localStorage.setItem(DELETED_KEY, JSON.stringify(deleted)); } catch (e) { /* storage blocked */ }
+  }
+  function lastSynced() { try { return +localStorage.getItem(SYNCED_KEY) || 0; } catch (e) { return 0; } }
+  /** 'off' (not connected), 'lost' (Dropbox stopped accepting the sign-in), 'busy', 'offline' (no network:
+      waits and syncs when it is back), 'error' (tries again by itself) or 'ok' */
+  function syncState() {
+    if (!DBX()) return window.QuickCalDropbox && window.QuickCalDropbox.lost() ? 'lost' : 'off';
+    return syncing ? 'busy' : offline ? 'offline' : syncError ? 'error' : 'ok';
+  }
+  function tell() { try { showBackupHint(); } catch (e) { /* only a hint */ } listeners.forEach(function (f) { try { f(syncState(), lastSynced(), syncError); } catch (e) { /* ignore */ } }); }
+  function syncSoon(ms) {
+    if (!DBX() || !syncHere()) return;
+    clearTimeout(syncTimer);
+    syncTimer = setTimeout(syncNow, ms == null ? 3000 : ms);
+  }
+  function syncNow() {
+    clearTimeout(syncTimer);
+    if (!DBX() || !syncHere()) { tell(); return Promise.resolve(); }
+    if (syncing) { syncAgain = true; return syncing; }
+    if (editor) { syncSoon(4000); return Promise.resolve(); }   // not while a note is open: after it closes
+    if (navigator.onLine === false) { offline = true; tell(); return Promise.resolve(); }
+    // Nothing here may stop the app: every failure ends as a state for the dot, and the next sync tries again
+    // (on the next change, when the app is shown, when the network is back, or within 5 minutes).
+    syncing = syncOnce(0).then(function () {
+      syncError = ''; offline = false;
+      try { localStorage.setItem(SYNCED_KEY, String(Date.now())); } catch (e) { /* storage blocked */ }
+    }, function (e) {
+      if (window.console) console.warn('Dropbox sync:', e);
+      applying = false;
+      offline = !!(e && e.offline);
+      var s = (e && e.summary) || '';
+      syncError = e && e.signedOut ? ''
+        : /insufficient_space/.test(s) ? T('Dropbox is full', 'Dropbox er full')
+        : e && e.newer ? T('a newer QuickCal has synced, update this one', 'en nyere QuickCal har synket, oppdater denne')
+        : e && e.busy ? T('Dropbox is busy', 'Dropbox er opptatt')
+        : T('error', 'feil');
+    }).then(function () {
+      syncing = null; tell();
+      if (syncAgain) { syncAgain = false; syncSoon(500); }
+    });
+    tell();
+    return syncing;
+  }
+
+  function hex(buf) { return Array.prototype.map.call(new Uint8Array(buf), function (b) { return ('0' + b.toString(16)).slice(-2); }).join(''); }
+  function picName(blob) {
+    return blob.arrayBuffer().then(function (b) { return crypto.subtle.digest('SHA-256', b); })
+      .then(function (h) { return hex(h) + (blob.type === 'image/png' ? '.png' : '.jpg'); });
+  }
+  // A note as it is kept in notes.json: the pictures by name
+  function shared(n, pics) {
+    var o = { text: n.text || '', color: n.color || '', images: pics, updated: n.updated || 0 };
+    if (n.endDate) o.endDate = n.endDate;
+    if (n.repeat) o.repeat = n.repeat;
+    if (n.series) o.series = n.series;
+    return o;
+  }
+  function sorted(o) { var r = {}; Object.keys(o).sort().forEach(function (k) { r[k] = o[k]; }); return r; }
+
+  function syncOnce(attempt) {
+    var D = DBX(), remote = null, rev = '', text = '', local = {}, blobs = {};
+    return D.download(SYNC_FILE).then(function (f) {
+      if (!f) return;
+      rev = f.rev;
+      return f.blob.text().then(function (t) {
+        text = t;
+        try { remote = JSON.parse(t); } catch (e) { remote = null; }
+        if (remote && remote.kind !== SYNC_KIND) remote = null;
+        // Written by a newer QuickCal: leave it alone rather than write it back in the old way
+        if (remote && remote.version > 1) { var e = new Error('newer sync file'); e.newer = true; throw e; }
+        if (remote) {   // only what QuickCal itself writes: a damaged file must not stop the sync or name other paths
+          var ok = {};
+          if (remote.notes && typeof remote.notes === 'object') Object.keys(remote.notes).forEach(function (k) {
+            var n = remote.notes[k];
+            if (!/^\d{4}-\d\d-\d\db?$/.test(k) || !n || typeof n !== 'object') return;
+            n.text = typeof n.text === 'string' ? n.text : '';
+            n.images = Array.isArray(n.images) ? n.images.filter(function (p) { return /^[0-9a-f]{64}\.(jpg|png)$/.test(p); }).slice(0, MAX_IMAGES) : [];
+            n.updated = +n.updated || 0;
+            if (n.color && !colorHex(n.color)) n.color = '';
+            if (!n.text.trim() && !n.images.length && !n.color && !n.repeat) return;   // nothing to keep
+            ok[k] = n;
+          });
+          remote.notes = ok;
+          if (!remote.deleted || typeof remote.deleted !== 'object') remote.deleted = {};
+        }
+      });
+    }).then(getAll).then(function (all) {
+      return Promise.all(all.map(function (n) {
+        return Promise.all((n.images || []).map(function (b) {
+          return picName(b).then(function (p) { blobs[p] = b; return p; });
+        })).then(function (pics) { local[n.date] = shared(n, pics); });
+      }));
+    }).then(function () {
+      var rNotes = (remote && remote.notes) || {}, rDeleted = (remote && remote.deleted) || {};
+      Object.keys(rDeleted).forEach(function (k) { if (!(deleted[k] >= rDeleted[k])) deleted[k] = rDeleted[k]; });
+      saveMarks();
+      // How long notes are kept: the latest change wins, before anything is judged too old
+      var keepTime = 0;
+      try { keepTime = +localStorage.getItem(KEEP_TIME_KEY) || 0; } catch (e) { /* storage blocked */ }
+      if (remote && remote.keepWeeks != null && (+remote.keepUpdated || 0) > keepTime) {
+        var shorter = cleanWeeks(remote.keepWeeks) < keepWeeks;
+        saveKeep(remote.keepWeeks, true, +remote.keepUpdated);
+        keepTime = +remote.keepUpdated;
+        if (shorter) removeOld();   // set shorter on another device: the older notes go here too
+      }
+      var result = {}, toPut = [], toDelete = [];
+      Object.keys(local).concat(Object.keys(rNotes)).forEach(function (k) {
+        if (result[k] || toDelete.indexOf(k) >= 0) return;
+        var l = local[k], r = rNotes[k];
+        var best = !l ? r : !r ? l : (r.updated || 0) > (l.updated || 0) ? r : l;
+        if ((deleted[k] || 0) > (best.updated || 0)) { if (l) toDelete.push(k); return; }
+        if (expired({ date: k, endDate: best.endDate, repeat: best.repeat })) return;   // deleted here soon anyway
+        if (best !== l) toPut.push(k);
+        result[k] = best;
+      });
+      // Color names: the latest change wins
+      var namesTime = 0;
+      try { namesTime = +localStorage.getItem(NAMES_TIME_KEY) || 0; } catch (e) { /* storage blocked */ }
+      var gotNames = remote && remote.colorNames && typeof remote.colorNames === 'object' && (+remote.namesUpdated || 0) > namesTime;
+      if (gotNames) {
+        names = remote.colorNames;
+        try { localStorage.setItem(NAMES_TIME_KEY, String(remote.namesUpdated)); } catch (e) { /* storage blocked */ }
+        saveNames(true);
+        namesTime = remote.namesUpdated;
+      }
+
+      // 1. Pictures this device does not have yet, then the notes from Dropbox into this browser
+      var need = [];
+      toPut.forEach(function (k) { rNotes[k].images.forEach(function (p) { if (!blobs[p] && need.indexOf(p) < 0) need.push(p); }); });
+      return Promise.all(need.map(function (p) {
+        return D.download('/img/' + p).then(function (f) {
+          if (f) blobs[p] = new Blob([f.blob], { type: /\.png$/.test(p) ? 'image/png' : 'image/jpeg' });
+        });
+      })).then(function () {
+        if (!toPut.length && !toDelete.length) return;
+        applying = true;
+        var write = tx('readwrite', function (s) {
+          toPut.forEach(function (k) {
+            var r = rNotes[k], n = { date: k, text: r.text || '', color: r.color || '', images: (r.images || []).map(function (p) { return blobs[p]; }).filter(Boolean), updated: r.updated || 0 };
+            if (r.endDate) n.endDate = r.endDate;
+            if (r.repeat) n.repeat = r.repeat;
+            if (r.series) n.series = r.series;
+            s.put(n);
+          });
+          toDelete.forEach(function (k) { s.delete(k); });
+        });
+        applying = false;
+        return write.then(getAll).then(function (all) {
+          index = {}; all.forEach(remember); rebuildCover(); deps.render();
+          if (tools && tools.list.offsetParent) refreshList();
+        });
+      }).then(function () {
+        if (gotNames && tools && tools.list.offsetParent) refreshList();
+        // 2. Our pictures Dropbox does not have, then notes.json (only if something changed)
+        var had = {};
+        Object.keys(rNotes).forEach(function (k) { (rNotes[k].images || []).forEach(function (p) { had[p] = 1; }); });
+        var file = { kind: SYNC_KIND, version: 1, notes: sorted(result), deleted: sorted(deleted),
+                     colorNames: names, namesUpdated: namesTime, keepWeeks: keepWeeks, keepUpdated: keepTime };
+        var json = JSON.stringify(file);
+        var send = [], uses = {};
+        Object.keys(result).forEach(function (k) { result[k].images.forEach(function (p) { uses[p] = 1; if (!had[p] && blobs[p] && send.indexOf(p) < 0) send.push(p); }); });
+        if (remote && json === JSON.stringify({ kind: remote.kind, version: remote.version, notes: remote.notes, deleted: remote.deleted, colorNames: remote.colorNames, namesUpdated: remote.namesUpdated, keepWeeks: remote.keepWeeks, keepUpdated: remote.keepUpdated }) && text) return;
+        return Promise.all(send.map(function (p) { return D.upload('/img/' + p, blobs[p], null); }))
+          .then(function () { return D.upload(SYNC_FILE, new Blob([json], { type: 'application/json' }), rev); })
+          .then(function () {
+            // Pictures no note uses any more
+            return Promise.all(Object.keys(had).filter(function (p) { return !uses[p]; }).map(function (p) { return D.remove('/img/' + p); }));
+          });
+      });
+    }).catch(function (e) {
+      applying = false;
+      // Another device wrote notes.json in between: start over with its version
+      if (/conflict/.test((e && e.summary) || '') && attempt < 2) return syncOnce(attempt + 1);
+      throw e;
+    });
+  }
+  function startSync() {
+    if (!syncHere()) return;
+    document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible') syncSoon(0); });
+    window.addEventListener('online', function () { syncSoon(0); });
+    setInterval(function () { if (document.visibilityState === 'visible') syncSoon(0); }, 5 * 60000);
+    syncSoon(0);
+  }
+
+  // =====================================================================================
+
+  function init(d) {
+    deps = d;
+    return openDb().then(function (opened) {
+      db = opened;
+      available = true;
+      setupDrag();
+      return getAll();
+    }).then(function (all) {
+      all.forEach(remember);
+      deps.render();
+      startSync();
+      return removeOld();
+    }).catch(function () { available = false; });
+  }
+
+  return {
+    init: init,
+    decorate: decorate,
+    hasNote: hasNote,
+    fillTip: fillTip,
+    openEditor: openEditor,
+    closeEditor: closeEditor,
+    isOpen: isOpen,
+    openPeek: openPeek,
+    openPicked: openPicked,
+    closePeek: closePeek,
+    isPeekOpen: isPeekOpen,
+    fillList: fillList,
+    listTools: listTools,
+    keptFor: keptFor,   // "for 12 weeks back", for the texts in app.js
+    deleteAll: deleteAll,
+    count: function () { return Object.keys(index).length; },
+    reload: function () {   // notes may have been changed in the "Always on top" window
+      if (!available) return Promise.resolve();
+      syncSoon();
+      return getAll().then(function (all) { index = {}; all.forEach(remember); rebuildCover(); deps.render(); });
+    },
+    // Dropbox
+    syncNow: syncNow,
+    syncState: syncState,
+    lastSynced: lastSynced,
+    onSync: function (f) { listeners.push(f); },
+    invalidate: invalidate,
+    removeOld: function () { return available ? removeOld() : Promise.resolve(); }
+  };
+})();
