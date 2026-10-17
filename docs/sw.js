@@ -1,6 +1,6 @@
 // QuickCal service worker: makes the app work offline and installable.
 // Bump VERSION when you publish a new version, so users get the new files.
-const VERSION = 'quickcal-v2.1.0';
+const VERSION = 'quickcal-v2.1.1';
 const FILES = [
   './',
   './index.html',
@@ -20,7 +20,8 @@ const FILES = [
 ];
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(caches.open(VERSION).then((cache) => cache.addAll(FILES)));
+  // cache: 'reload' skips the browser's own HTTP cache, so a new VERSION really gets the new files
+  event.waitUntil(caches.open(VERSION).then((cache) => cache.addAll(FILES.map((f) => new Request(f, { cache: 'reload' })))));
   self.skipWaiting();
 });
 
@@ -32,13 +33,15 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// Network first (so updates arrive quickly), cached copy when offline.
-// A slow network must not keep the app from opening: after 1.5 s the cached copy is used,
-// while the download goes on in the background and updates the cache for next time.
+// Cache first: the app opens from the cached copy at once, also when the PC has just started and the
+// network is not up yet. Each file is downloaded again in the background and updates the cache, so a
+// new version shows on the next start. (Bumping VERSION downloads all files fresh when the new
+// service worker installs.) The beta is network first, so changes to it show at once.
 const SLOW_NETWORK_MS = 1500;
 self.addEventListener('fetch', (event) => {
   const request = event.request;
-  if (request.method !== 'GET' || new URL(request.url).origin !== self.location.origin) return;
+  const url = new URL(request.url);
+  if (request.method !== 'GET' || url.origin !== self.location.origin) return;
   const network = fetch(request).then((response) => {
     if (response.ok) {
       const copy = response.clone();
@@ -46,7 +49,13 @@ self.addEventListener('fetch', (event) => {
     }
     return response;
   });
+  event.waitUntil(network.catch(() => {}));
   const cached = () => caches.match(request, { ignoreSearch: true });
+  if (!url.pathname.includes('/beta/')) {
+    event.respondWith(cached().then((c) => c || network.catch(() => caches.match('./index.html').then((i) => i || Response.error()))));
+    return;
+  }
+  // Beta: network first, the cached copy if the network is slower than 1.5 s or offline
   event.respondWith(new Promise((resolve) => {
     let done = false;
     const answer = (r) => { if (!done && r) { done = true; resolve(r); } };
@@ -57,5 +66,4 @@ self.addEventListener('fetch', (event) => {
         .then((c) => c || caches.match('./index.html'))
         .then((c) => answer(c || Response.error())));
   }));
-  event.waitUntil(network.catch(() => {}));
 });
