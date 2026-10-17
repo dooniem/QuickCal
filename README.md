@@ -18,6 +18,7 @@ QuickCal is free and open source. It comes in two versions:
 - Three months at a glance, or the whole year when the window is maximized. QuickCal Web also shows the whole year when the window fills the screen height, for example snapped to one half of the screen with Win+← or Win+→.
 - Public holidays and summer vacation marked in the calendar.
 - English or Norwegian.
+- QuickCal Web: short notes on days, turned on in Settings. Optional sync with your own Dropbox.
 
 ## QuickCal Web
 

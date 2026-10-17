@@ -1414,7 +1414,7 @@
 
     $('welcomeTitle').textContent = T('Getting started with QuickCal', 'Kom i gang med QuickCal');
     $('wInstallText').textContent = T('Install QuickCal as an app', 'Installer QuickCal som app');
-    var notesLine = el('small', 'wNote', T('Notes on days are available in the installed app.', 'Notater på dager er tilgjengelig i den installerte appen.'));
+    var notesLine = el('small', 'wNote', T('Notes on days are available in the installed app. Turn them on in Settings.', 'Notater på dager er tilgjengelig i den installerte appen. Skru dem på i Innstillinger.'));
     $('wBadgeText').innerHTML = '';
     $('wBadgeText').appendChild(document.createTextNode(T('Week number on the taskbar', 'Ukenummeret på oppgavelinjen')));
     $('wBadgeText').appendChild(document.createElement('br'));
