@@ -1283,8 +1283,8 @@
       if (installedElsewhere) {
         $('installTitle').textContent = T('QuickCal is already installed', 'QuickCal er allerede installert');
         $('installIntro').textContent = T(
-          'QuickCal is installed on this PC, but this is a browser tab. Start the app itself:',
-          'QuickCal er installert på denne PC-en, men dette er en fane i nettleseren. Start selve appen:');
+          'QuickCal is installed on this PC, but this window shows the QuickCal web page, not the app itself. Start the app:',
+          'QuickCal er installert på denne PC-en, men dette vinduet viser nettsiden til QuickCal, ikke selve appen. Start appen:');
         setList('installSteps', [
           T('Open the Start menu, search for QuickCal and open it.', 'Åpne Start-menyen, søk etter QuickCal og åpne den.'),
           pin]);
