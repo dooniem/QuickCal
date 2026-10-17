@@ -878,28 +878,34 @@
     }
   }
 
-  // Start the installed app from the web page. The app registers the address web+quickcalbeta: in its
-  // manifest (protocol_handlers), and Edge and Chrome hand that address to the app. The first time, the
-  // browser asks in the page whether QuickCal may open (with "Always allow"); the page keeps focus while
-  // it asks, so it must not move on. A web page cannot start an app any other way. If the app has not
-  // started after a few seconds, Getting started shows a hint below the button, other pages the install page.
+  // Start the installed app from the web page. Edge and Chrome open links to the app's own address in the
+  // installed app ("Open supported links", on by default in Edge), so the button opens such a link in a new
+  // tab: the browser hands it to the app, or, when it does not, the new tab tells this page so (on the
+  // channel below) and closes itself. A web page cannot start an app any other way. (The manifest also
+  // registers web+quickcal:, but Edge does not hand that address to the app from a web page.)
+  var OPEN_CHANNEL = STORAGE_KEY + '.open';
   function openInstalledApp() {
-    var left = false;
-    function away() { left = true; }
-    window.addEventListener('blur', away);
-    document.addEventListener('visibilitychange', away);
-    try { location.href = 'web+quickcalbeta:open'; } catch (e) { /* not supported */ }
-    setTimeout(function () {
-      window.removeEventListener('blur', away);
-      document.removeEventListener('visibilitychange', away);
-      if (left || !document.hasFocus()) return;
-      var note = currentPage === 'welcomePage' && document.querySelector('#wInstallText .wNote');
-      if (note) {
-        note.textContent = T('Did the browser ask whether QuickCal may open? Choose Open (and Always allow). Nothing happened? Open QuickCal from the Start menu.',
-          'Spurte nettleseren om QuickCal får åpnes? Velg Åpne (og Tillat alltid). Skjedde ingenting? Åpne QuickCal fra Start-menyen.');
+    var channel = null;
+    try { channel = new BroadcastChannel(OPEN_CHANNEL); } catch (e) { /* old browser: no hint */ }
+    if (channel) {
+      channel.onmessage = function (e) {
+        if (e.data !== 'notOpened') return;
+        channel.close();
+        var note = currentPage === 'welcomePage' && document.querySelector('#wInstallText .wNote');
+        if (!note) { openSubPage('installPage'); return; }
+        var apps = browserKind() === 'chrome' ? 'chrome://apps' : 'edge://apps';
+        note.textContent = T('The browser did not open the app. In ' + apps + ', open QuickCal and turn on “Open supported links”, or open QuickCal from the Start menu.',
+          'Nettleseren åpnet ikke appen. Gå til ' + apps + ', åpne QuickCal og slå på «La dette programmet åpne støttede koblinger», eller åpne QuickCal fra Start-menyen.');
         note.classList.add('wHint');
-      } else openSubPage('installPage');
-    }, 4000);
+      };
+      setTimeout(function () { try { channel.close(); } catch (e) { /* closed */ } }, 15000);
+    }
+    var a = document.createElement('a');
+    a.href = location.pathname + '?open=link';
+    a.target = '_blank';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
   }
 
   function runInstall() {
@@ -1552,7 +1558,13 @@
   resetToToday();
   // Clicking the QuickCal icon while the app is already open brings that window forward (manifest
   // launch_handler: focus-existing) instead of opening a second one. Show today, as on a fresh start.
-  if (/[?&]open=/.test(location.search) && window.history && history.replaceState) {
+  if (/[?&]open=/.test(location.search)) {
+    // Opened by "Open the app" (see openInstalledApp), but in a browser tab, not in the app:
+    // tell the page with the button, and close this extra tab
+    if (!isInstalled() && /[?&]open=link/.test(location.search) && history.length <= 1) {
+      try { var ch = new BroadcastChannel(OPEN_CHANNEL); ch.postMessage('notOpened'); ch.close(); } catch (e) { /* ignore */ }
+      try { window.close(); } catch (e) { /* not allowed: this tab stays as an ordinary visit */ }
+    }
     try { history.replaceState(null, '', location.pathname); } catch (e) { /* ignore */ }
   }
   if ('launchQueue' in window) {
