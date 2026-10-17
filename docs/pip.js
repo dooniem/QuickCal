@@ -43,7 +43,7 @@
       style.textContent = 'html,body{margin:0;height:100%;overflow:hidden;background:#fff}iframe{border:0;width:100%;height:100%;display:block}';
       d.head.appendChild(style);
       var frame = d.createElement('iframe');
-      frame.src = new URL('index.html?pip', location.href).href;
+      frame.src = new URL('index.html?pip' + (installed() ? '=notes' : ''), location.href).href;
       frame.addEventListener('load', function () { try { frame.contentWindow.focus(); } catch (e) { /* ignore */ } });
       d.body.appendChild(frame);
       win.addEventListener('pagehide', closed);
