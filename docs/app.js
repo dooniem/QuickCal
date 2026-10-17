@@ -843,6 +843,7 @@
   });
   window.addEventListener('appinstalled', function () {
     installPrompt = null;
+    markAppSeen();
     fillHelpPages();
   });
 
@@ -851,12 +852,22 @@
   // belongs to the browser on the taskbar, so pinning it pins Edge. Point to the Start menu instead.
   // Two signs that it is installed: getInstalledRelatedApps (not in every browser version), and a mark the
   // installed app leaves in this browser's storage, which counts until the browser offers installation again.
+  // The mark is set when installing, when the app window opens, and on every start of the app. A web page
+  // that is already open sees it at once (storage event), so the button changes without reloading the page.
   var APP_SEEN_KEY = STORAGE_KEY + '.appSeen';
   var installedElsewhere = false;
+  function markAppSeen() {
+    try { localStorage.setItem(APP_SEEN_KEY, String(Date.now())); } catch (e) { /* ignore */ }
+  }
   if (isInstalled()) {
-    try { localStorage.setItem(APP_SEEN_KEY, '1'); } catch (e) { /* ignore */ }
+    markAppSeen();
   } else {
-    try { installedElsewhere = localStorage.getItem(APP_SEEN_KEY) === '1'; } catch (e) { /* ignore */ }
+    try { installedElsewhere = !!localStorage.getItem(APP_SEEN_KEY); } catch (e) { /* ignore */ }
+    window.addEventListener('storage', function (e) {
+      if (e.key !== APP_SEEN_KEY || isInstalled()) return;
+      installedElsewhere = !!e.newValue && !installPrompt;
+      fillHelpPages();
+    });
     if (navigator.getInstalledRelatedApps) {
       navigator.getInstalledRelatedApps().then(function (apps) {
         if (!apps.some(function (a) { return a.platform === 'webapp'; }) || installPrompt) return;
@@ -866,10 +877,11 @@
     }
   }
 
-  // Start the installed app from the browser tab. The app registers the address web+quickcal: in its
-  // manifest (protocol_handlers), and Edge and Chrome hand that address to the app, after asking once.
-  // A web page cannot start an app any other way. If nothing happens (an installation from before the
-  // address existed, or another browser), the tab keeps focus, and the install page shows the Start menu way.
+  // Start the installed app from the web page. The app registers the address web+quickcal: in its
+  // manifest (protocol_handlers), and Edge and Chrome hand that address to the app. The first time, the
+  // browser asks in the page whether QuickCal may open (with "Always allow"); the page keeps focus while
+  // it asks, so it must not move on. A web page cannot start an app any other way. If the app has not
+  // started after a few seconds, Getting started shows a hint below the button, other pages the install page.
   function openInstalledApp() {
     var left = false;
     function away() { left = true; }
@@ -880,9 +892,13 @@
       window.removeEventListener('blur', away);
       document.removeEventListener('visibilitychange', away);
       if (left || !document.hasFocus()) return;
-      try { localStorage.removeItem(APP_SEEN_KEY); } catch (e) { /* the app sets it again on its next start */ }
-      openSubPage('installPage');
-    }, 2500);
+      var note = currentPage === 'welcomePage' && document.querySelector('#wInstallText .wNote');
+      if (note) {
+        note.textContent = T('Did the browser ask whether QuickCal may open? Choose Open (and Always allow). Nothing happened? Open QuickCal from the Start menu.',
+          'Spurte nettleseren om QuickCal får åpnes? Velg Åpne (og Tillat alltid). Skjedde ingenting? Åpne QuickCal fra Start-menyen.');
+        note.classList.add('wHint');
+      } else openSubPage('installPage');
+    }, 4000);
   }
 
   function runInstall() {
@@ -1520,6 +1536,7 @@
     var onModeChange = function () {
       applyTexts();
       if (isInstalled()) {
+        markAppSeen();
         startNotes();
         settings.appMaximized = false;
         startAppSizing();
