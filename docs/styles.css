@@ -203,6 +203,7 @@ html.phone .neHint { display: none; }
 html.touch .linkBox.notesBtn { position: relative; }
 html.touch .linkBox.notesBtn::after { content: ''; position: absolute; inset: -10px -2px; }
 .wText small.wNote { font-size: 10px; color: #555; font-weight: 400; }
+.wText small.wNote.wHint { color: #143275; font-weight: 600; }
 .notesInstallInfo { font-weight: 600; }
 #notesPage .btn.inline { margin-left: 0; }
 /* "Always on top" (pip.js) */
