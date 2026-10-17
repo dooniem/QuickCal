@@ -836,6 +836,9 @@
   window.addEventListener('beforeinstallprompt', function (e) {
     e.preventDefault();
     installPrompt = e;
+    // The browser only offers installation when QuickCal is not installed, so it has been uninstalled
+    installedElsewhere = false;
+    try { localStorage.removeItem(APP_SEEN_KEY); } catch (err) { /* ignore */ }
     fillHelpPages();
   });
   window.addEventListener('appinstalled', function () {
@@ -846,15 +849,44 @@
   // QuickCal already installed, but opened in a browser tab: the browser then offers no installation,
   // and the icon in the address bar only moves the tab into an app window ("Open in app"). Such a window
   // belongs to the browser on the taskbar, so pinning it pins Edge. Point to the Start menu instead.
+  // Two signs that it is installed: getInstalledRelatedApps (not in every browser version), and a mark the
+  // installed app leaves in this browser's storage, which counts until the browser offers installation again.
+  var APP_SEEN_KEY = STORAGE_KEY + '.appSeen';
   var installedElsewhere = false;
-  if (!isInstalled() && navigator.getInstalledRelatedApps) {
-    navigator.getInstalledRelatedApps().then(function (apps) {
-      installedElsewhere = apps.some(function (a) { return a.platform === 'webapp'; });
-      if (installedElsewhere) fillHelpPages();
-    }).catch(function () {});
+  if (isInstalled()) {
+    try { localStorage.setItem(APP_SEEN_KEY, '1'); } catch (e) { /* ignore */ }
+  } else {
+    try { installedElsewhere = localStorage.getItem(APP_SEEN_KEY) === '1'; } catch (e) { /* ignore */ }
+    if (navigator.getInstalledRelatedApps) {
+      navigator.getInstalledRelatedApps().then(function (apps) {
+        if (!apps.some(function (a) { return a.platform === 'webapp'; }) || installPrompt) return;
+        installedElsewhere = true;
+        fillHelpPages();
+      }).catch(function () {});
+    }
+  }
+
+  // Start the installed app from the browser tab. The app registers the address web+quickcal: in its
+  // manifest (protocol_handlers), and Edge and Chrome hand that address to the app, after asking once.
+  // A web page cannot start an app any other way. If nothing happens (an installation from before the
+  // address existed, or another browser), the tab keeps focus, and the install page shows the Start menu way.
+  function openInstalledApp() {
+    var left = false;
+    function away() { left = true; }
+    window.addEventListener('blur', away);
+    document.addEventListener('visibilitychange', away);
+    try { location.href = 'web+quickcal:open'; } catch (e) { /* not supported */ }
+    setTimeout(function () {
+      window.removeEventListener('blur', away);
+      document.removeEventListener('visibilitychange', away);
+      if (left || !document.hasFocus()) return;
+      try { localStorage.removeItem(APP_SEEN_KEY); } catch (e) { /* the app sets it again on its next start */ }
+      openSubPage('installPage');
+    }, 2500);
   }
 
   function runInstall() {
+    if (installedElsewhere && !installPrompt) { openInstalledApp(); return; }
     if (!installPrompt) { openSubPage('installPage'); return; }
     installPrompt.prompt();
     installPrompt.userChoice.then(function (choice) {
@@ -871,14 +903,15 @@
       w.disabled = true;
     } else {
       w.disabled = false;
-      w.textContent = installPrompt ? T('Install', 'Installer') : T('Show me how', 'Vis meg hvordan');
+      w.textContent = installPrompt ? T('Install', 'Installer')
+        : installedElsewhere ? T('Open the app', 'Åpne appen') : T('Show me how', 'Vis meg hvordan');
     }
     now.classList.toggle('hidden', !installPrompt || installed);
     $('resetSizeBtn').classList.toggle('hidden', !installed);
     var mobile = mobileOS();
     $('installPageBtn').textContent = mobile
       ? (installed ? T('Remove app', 'Fjern appen') : T('Add to home screen', 'Legg på Hjem-skjermen'))
-      : installed ? T('Uninstall', 'Avinstaller') : T('Install as app', 'Installer som app');
+      : installed ? T('Uninstall', 'Avinstaller') : installedElsewhere && !installPrompt ? T('Open the app', 'Åpne appen') : T('Install as app', 'Installer som app');
     // Phones and tablets have no taskbar, autostart or window size
     $('autostartPageBtn').classList.toggle('hidden', !!mobile);
     if (mobile) $('resetSizeBtn').classList.add('hidden');
@@ -951,7 +984,7 @@
   });
   // Same as Install on the welcome screen: when the browser offers installation, go straight to it
   $('installPageBtn').addEventListener('click', function () {
-    if (installPrompt && !isInstalled()) runInstall(); else openSubPage('installPage');
+    if ((installPrompt || installedElsewhere) && !isInstalled() && !mobileOS()) runInstall(); else openSubPage('installPage');
   });
   $('autostartPageBtn').addEventListener('click', function () { openSubPage('autostartPage'); });
   $('installNowBtn').addEventListener('click', runInstall);
@@ -1502,6 +1535,9 @@
   resetToToday();
   // Clicking the QuickCal icon while the app is already open brings that window forward (manifest
   // launch_handler: focus-existing) instead of opening a second one. Show today, as on a fresh start.
+  if (/[?&]open=/.test(location.search) && window.history && history.replaceState) {
+    try { history.replaceState(null, '', location.pathname); } catch (e) { /* ignore */ }
+  }
   if ('launchQueue' in window) {
     try { window.launchQueue.setConsumer(function () { if (isCalendarPage(currentPage)) resetToToday(); }); } catch (e) { /* not supported */ }
   }
