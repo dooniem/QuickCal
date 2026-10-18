@@ -884,12 +884,13 @@
   // channel below) and closes itself. A web page cannot start an app any other way. (The manifest also
   // registers web+quickcal:, but Edge does not hand that address to the app from a web page.)
   var OPEN_CHANNEL = STORAGE_KEY + '.open';
-  function openInstalledApp() {
-    var channel = null;
+  function openInstalledApp(auto) {
+    var channel = null, failed = false;
     try { channel = new BroadcastChannel(OPEN_CHANNEL); } catch (e) { /* old browser: no hint */ }
     if (channel) {
       channel.onmessage = function (e) {
         if (e.data !== 'notOpened') return;
+        failed = true;
         channel.close();
         var note = currentPage === 'welcomePage' && document.querySelector('#wInstallText .wNote');
         if (!note) { openSubPage('installPage'); return; }
@@ -899,6 +900,19 @@
         note.classList.add('wHint');
       };
       setTimeout(function () { try { channel.close(); } catch (e) { /* closed */ } }, 15000);
+      // The app took over (it has focus, and no "not opened" came back): this tab is no longer needed.
+      // Browsers only let a page close a tab that has nothing to go back to, so other tabs stay.
+      setTimeout(function () {
+        if (!failed && !document.hasFocus() && history.length <= 1) { try { window.close(); } catch (e) { /* not allowed */ } }
+        // Started from a shortcut (?start), not by a click: the browser blocks a new tab that no click asked
+        // for, unless pop-ups are allowed for this site. Nothing happened, so say how to allow it.
+        var note = document.querySelector('#wInstallText .wNote');
+        if (auto && !failed && document.hasFocus() && note && currentPage === 'welcomePage') {
+          note.textContent = T('To open the app straight from the shortcut, allow pop-ups for this site: click the blocked pop-up icon at the right end of the address bar and choose Always allow. Or click Open the app.',
+            'For å åpne appen rett fra snarveien må du tillate popup-vinduer for denne siden: klikk ikonet for blokkert popup helt til høyre i adressefeltet og velg Tillat alltid. Eller klikk «Åpne appen».');
+          note.classList.add('wHint');
+        }
+      }, 2500);
     }
     var a = document.createElement('a');
     a.href = location.pathname + '?open=link';
@@ -1558,6 +1572,10 @@
   resetToToday();
   // Clicking the QuickCal icon while the app is already open brings that window forward (manifest
   // launch_handler: focus-existing) instead of opening a second one. Show today, as on a fresh start.
+  // Shortcut that opens this page in the browser with ?start (msedge.exe https://…/QuickCal/?start): the
+  // browser starts much faster that way than with its own app shortcut, and the page then opens the app at once
+  var START_REQUEST = /[?&]start(=|&|$)/.test(location.search);
+  if (START_REQUEST) { try { history.replaceState(null, '', location.pathname); } catch (e) { /* ignore */ } }
   if (/[?&]open=/.test(location.search)) {
     // Opened by "Open the app" (see openInstalledApp), but in a browser tab, not in the app:
     // tell the page with the button, and close this extra tab
@@ -1602,6 +1620,7 @@
   } else if (!isInstalled()) {
     // In a browser tab: show the Getting started page on every visit, so it offers installation
     showWelcome();
+    if (START_REQUEST && installedElsewhere && !mobileOS()) openInstalledApp(true);
   } else if (!settings.appAutostartShown) {
     // Installed app: never the Getting started page on start (it would show after every reboot),
     // only once, on the first start as an app, the page about Edge's choices and pinning
