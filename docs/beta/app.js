@@ -1576,6 +1576,16 @@
   // browser starts much faster that way than with its own app shortcut, and the page then opens the app at once
   var START_REQUEST = /[?&]start(=|&|$)/.test(location.search);
   if (START_REQUEST) { try { history.replaceState(null, '', location.pathname); } catch (e) { /* ignore */ } }
+  // "Open the app" while QuickCal is already open: Edge opens a second app window instead of bringing the
+  // open one forward (it ignores launch_handler for links). The new window tells the others, and they close,
+  // so one window is left, in front. The short wait lets a note being written save first.
+  if (isInstalled() && !PIP) {
+    try {
+      var appChannel = new BroadcastChannel(STORAGE_KEY + '.app');
+      appChannel.onmessage = function (e) { if (e.data === 'takeover') setTimeout(function () { window.close(); }, 600); };
+      if (/[?&]open=link/.test(location.search)) appChannel.postMessage('takeover');
+    } catch (e) { /* old browser: two windows stay open */ }
+  }
   if (/[?&]open=/.test(location.search)) {
     // Opened by "Open the app" (see openInstalledApp), but in a browser tab, not in the app:
     // tell the page with the button, and close this extra tab
