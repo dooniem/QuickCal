@@ -807,6 +807,27 @@
   setInterval(function () { updateBadge(false); }, 30000);
   window.addEventListener('focus', function () { updateBadge(false); });
   window.addEventListener('pageshow', function () { updateBadge(true); });
+  // A minimized window is "hidden", and the browser then slows its timers down (and may pause the page
+  // after sleep), so the 30 s check above can stop until the window gets focus. A small worker keeps
+  // its own clock, which the browser does not slow down, and pokes the page; a gap in its ticks means
+  // the PC has been asleep.
+  try {
+    var tickSrc = 'var last=Date.now();setInterval(function(){var n=Date.now();postMessage(n-last>90000);last=n;},20000);';
+    var ticker = new Worker(URL.createObjectURL(new Blob([tickSrc], { type: 'text/javascript' })));
+    ticker.onmessage = function (e) { updateBadge(e.data === true); };
+  } catch (e) { /* no workers: the timer above still runs */ }
+  // The page is woken again (Chrome/Edge "resume"), or the network is back after sleep
+  document.addEventListener('resume', function () { updateBadge(true); });
+  window.addEventListener('online', function () { updateBadge(true); });
+
+  // Also when the page is not running at all: the service worker sets the badge on a "periodic sync"
+  // (installed Chrome/Edge apps only, when online; the browser picks the time, roughly a few times a day)
+  function registerWeekSync(reg) {
+    if (!reg || !reg.periodicSync || !isInstalled() || !navigator.permissions) return;
+    navigator.permissions.query({ name: 'periodic-background-sync' }).then(function (p) {
+      if (p.state === 'granted') return reg.periodicSync.register('week-badge', { minInterval: 60 * 60 * 1000 });
+    }).catch(function () { /* not supported */ });
+  }
 
   // =====================================================================================
   // Install as app
@@ -1569,6 +1590,10 @@
 
   applyTexts();
   updateBadge(true);
+  // The beta has no service worker of its own; the live app's one also covers the beta's folder
+  if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+    navigator.serviceWorker.getRegistration().then(registerWeekSync).catch(function () { /* none */ });
+  }
   resetToToday();
   // Clicking the QuickCal icon while the app is already open brings that window forward (manifest
   // launch_handler: focus-existing) instead of opening a second one. Show today, as on a fresh start.

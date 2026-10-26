@@ -1,6 +1,6 @@
 // QuickCal service worker: makes the app work offline and installable.
 // Bump VERSION when you publish a new version, so users get the new files.
-const VERSION = 'quickcal-v2.1.5';
+const VERSION = 'quickcal-v2.1.6';
 const FILES = [
   './',
   './index.html',
@@ -66,4 +66,20 @@ self.addEventListener('fetch', (event) => {
         .then((c) => c || caches.match('./index.html'))
         .then((c) => answer(c || Response.error())));
   }));
+});
+
+// Week number on the taskbar icon while the app window is not running its own timers (asleep,
+// minimized for a long time). The app registers 'week-badge' (installed Chrome/Edge only); the
+// browser wakes this worker for it now and then, when online.
+function isoWeek(now) {
+  const t = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
+  t.setUTCDate(t.getUTCDate() + 4 - (t.getUTCDay() || 7));
+  return Math.ceil(((t - Date.UTC(t.getUTCFullYear(), 0, 1)) / 86400000 + 1) / 7);
+}
+function setWeekBadge() {
+  if (!('setAppBadge' in self.navigator)) return Promise.resolve();
+  return self.navigator.setAppBadge(isoWeek(new Date())).catch(() => {});
+}
+self.addEventListener('periodicsync', (event) => {
+  if (event.tag === 'week-badge') event.waitUntil(setWeekBadge());
 });
