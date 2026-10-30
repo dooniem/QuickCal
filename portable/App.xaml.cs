@@ -89,7 +89,11 @@ namespace QuickCal
             mainWindow.IsVisibleChanged += (s, args) => mainWindowVisible = mainWindow.IsVisible;
 
             trayIcon = new TrayIconManager(Settings, ShowMainWindow, ExitApplication);
-            trayIcon.DateChanged += (s, args) => mainWindow.RefreshCalendar();
+            trayIcon.DateChanged += (s, args) =>
+            {
+                mainWindow.RemoveOldNotes();
+                mainWindow.RefreshCalendar();
+            };
 
             bool startInTray = e.Args.Any(a => string.Equals(a, TrayArgument, StringComparison.OrdinalIgnoreCase));
             if (!Settings.Values.WelcomeShown)

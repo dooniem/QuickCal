@@ -23,6 +23,8 @@ namespace QuickCal
         public int NumberOfWeeks { get; set; } = 3;
         public bool TrayHintShown { get; set; }
         public bool WelcomeShown { get; set; }
+        /// <summary>Notes on days (as in the web app). Off only hides them; nothing is deleted.</summary>
+        public bool NotesEnabled { get; set; } = true;
 
         // Window position and size (null = not saved yet)
         public double? WindowLeft { get; set; }

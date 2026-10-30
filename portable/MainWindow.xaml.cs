@@ -34,6 +34,7 @@ namespace QuickCal
 
             RestoreWindowPlacement();
 
+            InitNotes();
             ApplyUiTexts();
             UpdateDayLabels();
             UpdateGrids();
@@ -65,6 +66,7 @@ namespace QuickCal
 
         private void UpdateGrids()
         {
+            ForgetDayCells();
             LoadHolidays(new[] { -1, 0, 1 }.Select(i => activeMonth.AddMonths(i).Year));
             FillGridWithDates(calGrid1, month1, year1, activeMonth.AddMonths(-1));
             FillGridWithDates(calGrid2, month2, year2, activeMonth);
@@ -106,6 +108,8 @@ namespace QuickCal
 
                 TextBlock textBlock = CreateTextBlock(day.ToString(CultureInfo.InvariantCulture), Colors.Black);
                 Border border;
+                CellKind kind = CellKind.Plain;
+                string tip = null;
 
                 if (date == today && date.Month == 9 && date.Day == 5)
                 {
@@ -118,6 +122,8 @@ namespace QuickCal
                     border.Background = fadedGold;
                     border.BorderBrush = Brushes.Red;
                     border.BorderThickness = new Thickness(2);
+                    kind = CellKind.Today;
+                    tip = settingsManager.BirthdayText();
                 }
                 else if (date == today)
                 {
@@ -126,11 +132,15 @@ namespace QuickCal
                     border = CreateColoredBorder(textBlock, HeaderBlue, attachEventHandlers: false);
                     border.BorderBrush = Brushes.Red;
                     border.BorderThickness = new Thickness(2);
+                    kind = CellKind.Today;
+                    holidays.TryGetValue(date, out tip);
                 }
                 else if (holidays.TryGetValue(date, out string tooltip))
                 {
                     textBlock.Foreground = Brushes.White;
                     border = CreateColoredBorder(textBlock, HolidayRed, true, tooltip);
+                    kind = CellKind.Holiday;
+                    tip = tooltip;
                 }
                 else if (date.Month == 9 && date.Day == 5)
                 {
@@ -139,6 +149,8 @@ namespace QuickCal
                     border = CreateColoredBorder(textBlock, Color.FromArgb(0xFF, 0xFF, 0xD7, 0x00), true, settingsManager.BirthdayText());
                     border.Background = GetGoldBrush();
                     border.Opacity = 0.8;
+                    kind = CellKind.Gold;
+                    tip = settingsManager.BirthdayText();
                 }
                 else
                 {
@@ -148,6 +160,7 @@ namespace QuickCal
                 Grid.SetRow(border, rowIndex);
                 Grid.SetColumn(border, columnIndex);
                 grid.Children.Add(border);
+                RegisterDayCell(border, textBlock, date, kind, tip);
 
                 // ISO week number in column 0, once per row
                 if (columnIndex == 1 || day == 1)
@@ -267,6 +280,7 @@ namespace QuickCal
 
         private void UpdateYearView()
         {
+            ForgetDayCells();
             yearTitle.Text = activeYear.ToString(CultureInfo.InvariantCulture);
             LoadHolidays(new[] { activeYear });
 
@@ -385,6 +399,7 @@ namespace QuickCal
         /// <summary>Clicking a holiday shows its tooltip right away (as in the UWP version).</summary>
         private void Element_MouseDown(object sender, MouseButtonEventArgs e)
         {
+            if (NotesHere) return;   // with notes, a click opens the day's small box (its tooltip shows on hover)
             if (sender is Border border && border.ToolTip is ToolTip toolTip)
             {
                 toolTip.PlacementTarget = border;
@@ -486,6 +501,7 @@ namespace QuickCal
 
         private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
         {
+            if (NotesKeyDown(e)) return;
             if (e.IsRepeat) return;
 
             if (IsYearView)
@@ -526,11 +542,19 @@ namespace QuickCal
         private void ShowTab(Grid tab)
         {
             bool year = tab == yearContent;
-            tabContainer.Width = year ? YearViewWidth : NormalViewWidth;
-            tabContainer.Height = year ? YearViewHeight : NormalViewHeight;
+            // The notes list fills a maximized window too (room for more notes, with small pictures)
+            bool big = year || (tab == tabNotes && IsMaximized);
+            tabContainer.Width = big ? YearViewWidth : NormalViewWidth;
+            tabContainer.Height = big ? YearViewHeight : NormalViewHeight;
             // Settings pages in a maximized window: normal size, centered (not blown up to full screen)
-            bool calendarPage = year || tab == tab1Content;
+            bool calendarPage = big || tab == tab1Content;
             rootViewbox.StretchDirection = IsMaximized && !calendarPage ? StretchDirection.DownOnly : StretchDirection.Both;
+            if (!(year || tab == tab1Content))
+            {
+                if (editor != null) CloseEditor();
+                ClosePeek();
+            }
+            CloseNotesMenu();
 
             yearContent.Visibility = year ? Visibility.Visible : Visibility.Collapsed;
             tab1Content.Visibility = tab == tab1Content ? Visibility.Visible : Visibility.Collapsed;
@@ -538,6 +562,8 @@ namespace QuickCal
             tab3Content.Visibility = tab == tab3Content ? Visibility.Visible : Visibility.Collapsed;
             tab4Content.Visibility = tab == tab4Content ? Visibility.Visible : Visibility.Collapsed;
             tab5Content.Visibility = tab == tab5Content ? Visibility.Visible : Visibility.Collapsed;
+            tabNotes.Visibility = tab == tabNotes ? Visibility.Visible : Visibility.Collapsed;
+            tabDropbox.Visibility = tab == tabDropbox ? Visibility.Visible : Visibility.Collapsed;
         }
 
         private void SettingsButton_Click(object sender, MouseButtonEventArgs e)
@@ -547,6 +573,7 @@ namespace QuickCal
             showHolidaysCheckbox.IsChecked = values.ShowHolidays;
             easterFullWeekCheckbox.IsChecked = values.ShowEasterAsFullWeek;
             numberOfWeeksTextBox.Text = values.NumberOfWeeks.ToString(CultureInfo.InvariantCulture);
+            notesEnabledCheckbox.IsChecked = values.NotesEnabled;
             ShowTab(tab2Content);
         }
 
@@ -557,8 +584,11 @@ namespace QuickCal
             values.ShowHolidays = showHolidaysCheckbox.IsChecked;
             values.ShowEasterAsFullWeek = easterFullWeekCheckbox.IsChecked;
             if (int.TryParse(numberOfWeeksTextBox.Text, out int weeks)) values.NumberOfWeeks = Math.Clamp(weeks, 0, 3);
+            values.NotesEnabled = notesEnabledCheckbox.IsChecked;   // off: notes are only hidden, nothing is deleted
             settingsManager.Save();
             App.Current.OnSettingsChanged();
+            NotesSettingsChanged();
+            StartNotes();
 
             ApplyUiTexts();
             UpdateDayLabels();
@@ -837,10 +867,12 @@ namespace QuickCal
             // Year view
             SetKeyHint(yearInfoPanel, T(" change year · ", " bytt år · "), null, T(" this year", " nåværende år"));
             yearSettingsText.Text = settingsButtonText.Text;
+            UpdateNotesButtons();
 
             // Settings page
             settingsTitle.Text = T("Settings", "Innstillinger");
             languageLabel.Text = T("Calendar Language", "Kalenderspråk");
+            notesLabel.Text = T("Notes on days", "Notater på dager");
             systemLanguageItem.Content = T("Use system language", "Bruk systemspråk");
             autostartPageButton.Content = T("Enable autostart", "Slå på autostart");
             autostartPageButton.ToolTip = T("Keep the week icon updated after reboot", "Hold ukeikonet oppdatert etter omstart");
