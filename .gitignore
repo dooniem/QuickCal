@@ -15,6 +15,9 @@ TestResults/
 
 # QuickCal user settings (created next to QuickCal.exe)
 QuickCal.settings.json
+QuickCal.notes.json
+QuickCal.notes.json.tmp
+QuickCal.notes-pictures/
 
 # OS files
 Thumbs.db

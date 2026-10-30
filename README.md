@@ -18,7 +18,7 @@ QuickCal is free and open source. It comes in two versions:
 - Three months at a glance, or the whole year when the window is maximized. QuickCal Web also shows the whole year when the window fills the screen height, for example snapped to one half of the screen with Win+← or Win+→.
 - Public holidays and summer vacation marked in the calendar.
 - English or Norwegian.
-- QuickCal Web: short notes on days, turned on in Settings. Optional sync with your own Dropbox.
+- Short notes on days, turned on in Settings: checklists, colors, pictures, notes over several days and repeating notes, with search, Excel export and backup. Optional sync with your own Dropbox, so the web app and the portable app show the same notes.
 
 ## QuickCal Web
 
@@ -49,11 +49,11 @@ Closing the window hides QuickCal to the icon by the clock. Right-click the icon
 
 > **Windows SmartScreen:** Windows may warn you the first time you run `QuickCal.exe`. Choose *More info → Run anyway*. On work PCs, your IT department decides whether the app may run.
 
-**Uninstall:** turn off autostart in **Settings**, choose **Exit** from the icon by the clock, and delete `QuickCal.exe` and `QuickCal.settings.json`.
+**Uninstall:** turn off autostart in **Settings**, choose **Exit** from the icon by the clock, and delete `QuickCal.exe`, `QuickCal.settings.json`, `QuickCal.notes.json` and the folder `QuickCal.notes-pictures`.
 
 ## Privacy
 
-QuickCal collects no data. The portable app makes no network connections. The web app only loads its own files from GitHub Pages, and your settings are stored in your browser.
+QuickCal collects no data. The portable app keeps notes in `QuickCal.notes.json` next to `QuickCal.exe`, and only connects to the internet if you turn on Dropbox sync. The notes then go to your own Dropbox, in the folder Apps/QuickCal. The web app only loads its own files from GitHub Pages, and your settings are stored in your browser.
 
 ## History
 
