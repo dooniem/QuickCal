@@ -389,7 +389,7 @@
 
                 <Grid Grid.Row="2" Grid.Column="4" Margin="0.5">
                     <Viewbox Stretch="Uniform">
-                        <TextBlock x:Name="Tagline" Text="QuickCal v2.0 - Magnus Petersen" HorizontalAlignment="Center" Margin="0,0,3,0" Foreground="Black"/>
+                        <TextBlock x:Name="Tagline" Text="QuickCal v2.1 - Magnus Petersen" HorizontalAlignment="Center" Margin="0,0,3,0" Foreground="Black"/>
                     </Viewbox>
                 </Grid>
             </Grid>
@@ -451,7 +451,7 @@
                         </Border>
                     </Viewbox>
                     <Viewbox Grid.Column="2" Stretch="Uniform" Margin="0.5">
-                        <TextBlock x:Name="yearTagline" Text="QuickCal v2.0 - Magnus Petersen" Margin="0,0,3,0" Foreground="Black"/>
+                        <TextBlock x:Name="yearTagline" Text="QuickCal v2.1 - Magnus Petersen" Margin="0,0,3,0" Foreground="Black"/>
                     </Viewbox>
                 </Grid>
             </Grid>
