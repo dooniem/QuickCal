@@ -2,6 +2,7 @@
    Edge and Chrome on a PC can show a page in a small floating window that stays above other windows
    (Document Picture-in-Picture). The calendar is shown there and this window only says where it went,
    so there are never two calendars. Always off at start: it needs a click every time.
+   Shown on every PC and Mac; in a browser without it (Firefox, Safari) a click says what it needs.
    To remove the feature: delete this file, its <script> tag and the pipBtn1 button in index.html,
    and the .pipBtn/.pipCover/html.pip styles. app.js only needs ?pip to work as before. */
 (function () {
@@ -9,6 +10,29 @@
   function no() { return document.documentElement.lang === 'no'; }
   function T(en, nb) { return no() ? nb : en; }
   function hoverText(b) { b.addEventListener('mouseenter', function () { b.title = T('Always on top', 'Alltid øverst'); }); }
+
+  // A browser without "Always on top": a short note over the calendar, closed with OK, a click outside or Esc
+  function showMissing() {
+    if (document.getElementById('pipCover')) return;
+    var c = document.createElement('div');
+    c.id = 'pipCover';
+    c.className = 'pipNote';
+    var p = document.createElement('p');
+    p.textContent = T('"Always on top" needs Google Chrome or Microsoft Edge on a PC or Mac. This browser does not have it.',
+                      '«Alltid øverst» krever Google Chrome eller Microsoft Edge på PC eller Mac. Denne nettleseren har det ikke.');
+    var b = document.createElement('button');
+    b.className = 'linkBox';
+    b.textContent = 'OK';
+    function close() { c.remove(); document.removeEventListener('keydown', esc, true); }
+    function esc(e) { if (e.key === 'Escape' || e.key === 'Enter') { e.preventDefault(); e.stopImmediatePropagation(); close(); } }
+    b.addEventListener('click', function (e) { e.stopPropagation(); close(); });
+    c.addEventListener('click', function (e) { if (e.target === c) close(); });
+    document.addEventListener('keydown', esc, true);
+    c.appendChild(p);
+    c.appendChild(b);
+    document.body.appendChild(c);
+    b.focus();
+  }
 
   // In the floating window itself: the same button, green while it is on. A click turns it off.
   if (/[?&]pip(=|&|$)/.test(location.search)) {
@@ -25,8 +49,20 @@
     });
     return;
   }
-  if (!('documentPictureInPicture' in window)) return;           // other browsers, phones and tablets
-  if (window.matchMedia && matchMedia('(hover: none) and (pointer: coarse)').matches) return;
+  if (window.matchMedia && matchMedia('(hover: none) and (pointer: coarse)').matches) return;   // phones and tablets
+  // Other browsers on a PC or Mac (Firefox, Safari, older Chrome/Edge): the button still shows, so the
+  // feature can be found, and a click says what it needs instead of doing nothing.
+  if (!('documentPictureInPicture' in window)) {
+    document.addEventListener('DOMContentLoaded', function () {
+      var b = document.getElementById('pipBtn1');
+      if (!b) return;
+      b.classList.remove('hidden');
+      b.classList.add('pipMissing');
+      hoverText(b);
+      b.addEventListener('click', function (e) { e.stopPropagation(); showMissing(); });
+    });
+    return;
+  }
 
   var pipWin = null;
   function installed() {
